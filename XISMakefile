@@ -2,11 +2,13 @@
 # XISMakefile
 #
 
-VER		= 20101129
+VER		= 20101204
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
 # 20101129 - Cleaned Eventにxispiをかけていたのを止めた
+# 20101201 - aepipeline後のデータに対応
+# 20101204 - NXB生成をPINUDに対応
 
 # Programs
 XSEL	= xselect
@@ -20,6 +22,7 @@ ARFGEN	= xissimarfgen
 NXBGEN	= xisnxbgen
 ADDARF	= addarf
 MARFRMF	= marfrmf
+MKPINHK = aemkpinudhk
 
 # External Parameter Filename
 PARAM	= _Parameters.txt
@@ -39,6 +42,8 @@ NXB_TIME_MIN	:= -150
 NXB_TIME_MAX	:= +150
 # XSelect Default GTI Filter File (default to null)
 GTI_FILE		:=
+# NXB Gen Sortkey
+NXB_SORTKEY		:= COR2
 
 # Override Default Parameters
 -include $(PARAM)
@@ -51,22 +56,28 @@ PHACUTOFF		:=
 REGION			:=
 # XSELECT image bin size
 IMGBIN			:= 8
+# NXB Gen Sortstep and EHK Margin Seconds (PINUD only)
+NXB_COR_STEP	:= "0,4,5,6,7,8,9,10,11,12,13,99"
+NXB_PINUD_STEP	:= "100,150,175,200,225,250,275,300,325,350,375,400,425,450,500"
+NXB_EHK_MARGIN	:= 30.0
 
 # Common Files
-XISROOT	:= $(ROOT)/xis
-SRC3x3	:= $(wildcard $(XISROOT)/event_cl/ae*$(INSTRM)*3x3*.evt.gz)
-SRC5x5	:= $(wildcard $(XISROOT)/event_cl/ae*$(INSTRM)*5x5*.evt.gz)
-HKFILE	:= $(wildcard $(XISROOT)/hk/ae*$(INSTRM)*.hk.gz)
-EHKFILE	:= $(wildcard $(ROOT)/auxil/ae*.ehk.gz)
-ATTFILE	:= $(wildcard $(ROOT)/auxil/ae*.att.gz)
-ORBFILE	:= $(wildcard $(ROOT)/auxil/ae*.orb.gz)
+XISROOT		:= $(ROOT)/xis
+HXDROOT		:= $(ROOT)/hxd
+SRC3x3		:= $(wildcard $(XISROOT)/event_cl/ae*$(INSTRM)*3x3*.evt*)
+SRC5x5		:= $(wildcard $(XISROOT)/event_cl/ae*$(INSTRM)*5x5*.evt*)
+HKFILE		:= $(wildcard $(XISROOT)/hk/ae*$(INSTRM)*.hk*)
+EHKFILE		:= $(wildcard $(ROOT)/auxil/ae*.ehk*)
+ATTFILE		:= $(wildcard $(ROOT)/auxil/ae*.att*)
+ORBFILE		:= $(wildcard $(ROOT)/auxil/ae*.orb*)
+HXDHKFILE	:= $(wildcard $(HXDROOT)/hk/ae*_0.hk*)
 
 # Initialization
 
 .SUFFIXES:
-.SUFFIXES: .evt .caldb .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .ps .eps .pdf .txt
+.SUFFIXES: .evt .caldb .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .txt
 
-.PRECIOUS: %.evt %.pha %.rsp %.prsp %.nxb
+.PRECIOUS: %.evt %.pha %.rsp %.prsp %.nxb %.pinud
 
 .INTERMEDIATE: %.rmf %.arf %.parf
 
@@ -107,6 +118,38 @@ xspec : spec rsp nxb
 
 nxb : $(PJNAME).nxb
 
+# NXB from PINUD
+ifeq ($(NXB_SORTKEY),PINUD)
+
+%.nxb : %.pha %.reg $(PJNAME).pinud $(ATTFILE) $(ORBFILE)
+	-rm -f $@
+	$(NXBGEN) \
+		$@ \
+		$< \
+		SKYREG \
+		$*.reg \
+		$(ORBFILE) \
+		$(ATTFILE) \
+		sortkey=$(NXB_SORTKEY) \
+		sortstep=$(NXB_PINUD_STEP) \
+		ehkfile=$(PJNAME).pinud \
+		ehk_margin_sec=$(NXB_EHK_MARGIN) \
+		pixq_and=0 pi_min=274 pi_max=548 \
+		time_min=$(NXB_TIME_MIN) \
+		time_max=$(NXB_TIME_MAX) \
+		clobber=yes detmask=none
+
+%.pinud : $(PJNAME).evt $(HXDHKFILE) $(ORBFILE)
+	-rm -f $@
+	$(MKPINHK) \
+		$@ \
+		$(HXDHKFILE) \
+		$< \
+		$(ORBFILE)
+
+else
+# NXB from COR/COR2
+
 %.nxb : %.pha %.reg $(ATTFILE) $(ORBFILE)
 	-rm -f $@
 	$(NXBGEN) \
@@ -116,10 +159,14 @@ nxb : $(PJNAME).nxb
 		$*.reg \
 		$(ORBFILE) \
 		$(ATTFILE) \
+		sortkey=$(NXB_SORTKEY) \
+		sortstep=$(NXB_COR_STEP) \
 		pixq_and=0 pi_min=274 pi_max=548 \
 		time_min=$(NXB_TIME_MIN) \
 		time_max=$(NXB_TIME_MAX) \
 		clobber=yes detmask=none
+
+endif
 
 # Response
 .PHONY : rsp
@@ -412,7 +459,7 @@ event : $(PJNAME).evt
 # EPS and PDF
 .ps.eps :
 	-rm -f $@
-	ps2eps -R=+ --ignoreBB $<
+	ps2eps -R=+ --ignoreBB -l $<
 
 .eps.pdf :
 	-rm -f $@
@@ -455,6 +502,8 @@ ARF_PCNT	= $(ARF_PCNT)
 # NXB Gen
 NXB_TIME_MIN	= $(NXB_TIME_MIN)
 NXB_TIME_MAX	= $(NXB_TIME_MAX)
+NXB_SORTKEY		= $(NXB_SORTKEY)
+
 endef
 export PARAMETERS
 
