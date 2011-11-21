@@ -2,13 +2,14 @@
 # XISMakefile
 #
 
-VER		= 20101204
+VER		= 20111114
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
 # 20101129 - Cleaned Eventにxispiをかけていたのを止めた
 # 20101201 - aepipeline後のデータに対応
 # 20101204 - NXB生成をPINUDに対応
+# 20111114 - 生成物をgzip
 
 # Programs
 XSEL	= xselect
@@ -75,11 +76,11 @@ HXDHKFILE	:= $(wildcard $(HXDROOT)/hk/ae*_0.hk*)
 # Initialization
 
 .SUFFIXES:
-.SUFFIXES: .evt .caldb .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .txt
+.SUFFIXES: .evt .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .txt .gz
 
-.PRECIOUS: %.evt %.pha %.rsp %.prsp %.nxb %.pinud
+.PRECIOUS: %.evt.gz %.pha.gz %.rsp.gz %.prsp.gz %.nxb.gz
 
-.INTERMEDIATE: %.rmf %.arf %.parf
+.INTERMEDIATE: $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis $(PJNAME).evt %.pha %.rmf %.arf %.parf %.rsp %.prsp %.nxb
 
 # Instrument Full Name
 INSTRMF	:= XIS$(subst xi,,$(INSTRM))
@@ -105,6 +106,7 @@ endif
 .PHONY : all
 
 all :
+	@echo XISMake Version: $(VER)
 	@echo Please state a target from : param event image lc spec rsp nxb xspec
 	@echo For image and lc, following run-time parameters can be set: PHACUTOFF, REGION, IMGBIN
 
@@ -116,12 +118,12 @@ xspec : spec rsp nxb
 # NXB
 .PHONY : nxb
 
-nxb : $(PJNAME).nxb
+nxb : $(PJNAME).nxb.gz
 
 # NXB from PINUD
 ifeq ($(NXB_SORTKEY),PINUD)
 
-%.nxb : %.pha %.reg $(PJNAME).pinud $(ATTFILE) $(ORBFILE)
+%.nxb : %.pha.gz %.reg $(PJNAME).pinud $(ATTFILE) $(ORBFILE)
 	-rm -f $@
 	$(NXBGEN) \
 		$@ \
@@ -139,7 +141,7 @@ ifeq ($(NXB_SORTKEY),PINUD)
 		time_max=$(NXB_TIME_MAX) \
 		clobber=yes detmask=none
 
-%.pinud : $(PJNAME).evt $(HXDHKFILE) $(ORBFILE)
+%.pinud : $(PJNAME).evt.gz $(HXDHKFILE) $(ORBFILE)
 	-rm -f $@
 	$(MKPINHK) \
 		$@ \
@@ -150,7 +152,7 @@ ifeq ($(NXB_SORTKEY),PINUD)
 else
 # NXB from COR/COR2
 
-%.nxb : %.pha %.reg $(ATTFILE) $(ORBFILE)
+%.nxb : %.pha.gz %.reg $(ATTFILE) $(ORBFILE)
 	-rm -f $@
 	$(NXBGEN) \
 		$@ \
@@ -171,29 +173,29 @@ endif
 # Response
 .PHONY : rsp
 
-rsp : $(PJNAME).rsp
+rsp : $(PJNAME).rsp.gz
 
-%.rsp : %.arf
+%.rsp : %.rmf %.arf
 	-rm -f $@
 	$(MARFRMF) $*.rmf $*.arf $@
+	-rm -f $*.rmf $*.arf
 
 # Response for Point Src
 .PHONY : prsp
 
-%.prsp : %.parf
+prsp : $(PJNAME).prsp.gz
+
+%.prsp : %.rmf %.parf
 	-rm -f $@
 	$(MARFRMF) $*.rmf $*.parf $@
 
 # ARF
-#.PHONY : arf
-#
-#arf : $(PJNAME).arf
 
 # ARF Generation in Parallel
 ifeq ($(NPROCS),1)
 
 # RMF to ARF (Single Thread)
-%.arf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+%.arf : %.rmf $(PJNAME).evt.gz %.reg %.pha.gz $(ATTFILE)
 	-rm -f $@
 	$(ARFGEN) \
 		clobber=yes \
@@ -216,9 +218,9 @@ ifeq ($(NPROCS),1)
 		limit_mode=MIXED \
 		num_photon=$(ARF_PCNT) \
 		accuracy=0.005 \
-		phafile=$*.pha \
+		phafile=$*.pha.gz \
 		detmask='none' \
-		gtifile=$(PJNAME).evt \
+		gtifile=$(PJNAME).evt.gz \
 		attitude=$(ATTFILE) \
 		rmffile=$< \
 		estepfile=medium
@@ -231,7 +233,7 @@ PID		:= $(shell echo $$$$)
 ARFCMD	:= .arfcmd.$(PID)
 ARFLIST	:= .arflist.$(PID)
 
-%.arf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+%.arf : %.rmf $(PJNAME).evt.gz %.reg %.pha.gz $(ATTFILE)
 	-rm -f $@
 	-rm -f $(ARFCMD) $(ARFLIST)
 	for i in {1..$(NPROCS)}; \
@@ -257,9 +259,9 @@ ARFLIST	:= .arflist.$(PID)
 			limit_mode=MIXED \
 			num_photon=`expr $(ARF_PCNT) / $(NPROCS)` \
 			accuracy=0.005 \
-			phafile=$*.pha \
+			phafile=$*.pha.gz \
 			detmask='none' \
-			gtifile=$(PJNAME).evt \
+			gtifile=$(PJNAME).evt.gz \
 			attitude=$(ATTFILE) \
 			rmffile=$< \
 			estepfile=medium \
@@ -278,7 +280,7 @@ endif
 ifeq ($(NPROCS),1)
 
 # RMF to Point-ARF (Single Thread)
-%.parf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+%.parf : %.rmf $(PJNAME).evt.gz %.reg %.pha.gz $(ATTFILE)
 	-test `grep -i circle $*.reg | wc -l` -ne 1 \
 		(echo Error: Multiple regions not allowed. ; exit 1;)
 	-rm -f $@
@@ -303,9 +305,9 @@ ifeq ($(NPROCS),1)
 		limit_mode=MIXED \
 		num_photon=$(ARF_PCNT) \
 		accuracy=0.005 \
-		phafile=$*.pha \
+		phafile=$*.pha.gz \
 		detmask='none' \
-		gtifile=$(PJNAME).evt \
+		gtifile=$(PJNAME).evt.gz \
 		attitude=$(ATTFILE) \
 		rmffile=$< \
 		estepfile=medium
@@ -318,7 +320,7 @@ PID		:= $(shell echo $$$$)
 PARFCMD	:= .parfcmd.$(PID)
 PARFLIST:= .parflist.$(PID)
 
-%.parf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+%.parf : %.rmf $(PJNAME).evt.gz %.reg %.pha.gz $(ATTFILE)
 	-rm -f $@
 	-rm -f $(PARFCMD) $(PARFLIST)
 	for i in {1..$(NPROCS)}; \
@@ -344,9 +346,9 @@ PARFLIST:= .parflist.$(PID)
 			limit_mode=MIXED \
 			num_photon=`expr $(ARF_PCNT) / $(NPROCS)` \
 			accuracy=0.005 \
-			phafile=$*.pha \
+			phafile=$*.pha.gz \
 			detmask='none' \
-			gtifile=$(PJNAME).evt \
+			gtifile=$(PJNAME).evt.gz \
 			attitude=$(ATTFILE) \
 			rmffile=$< \
 			estepfile=medium \
@@ -361,24 +363,21 @@ PARFLIST:= .parflist.$(PID)
 endif
 
 # RMF
-#.PHONY : rmf
-#
-#rmf : $(PJNAME).rmf
 
 # PHA to RMF
-%.rmf : %.pha
+%.rmf : %.pha.gz
 	-rm -f $@
 	$(RMFGEN) phafile=$< outfile=$@
 
 # Spectrum
 .PHONY : spec
 
-spec : $(PJNAME).pha
+spec : $(PJNAME).pha.gz
 
 # EVT to PHA
-%.pha : %.reg $(GTI_FILE) $(PJNAME).evt
+%.pha : %.reg $(GTI_FILE) $(PJNAME).evt.gz
 	-rm -f $@
-	$(XSELW) -e spec $(XSELCMD) -r $< $(if $(wildcard $*.gti),-g $(wildcard $*.gti)) $(PJNAME).evt $@
+	$(XSELW) -e spec $(XSELCMD) -r $< $(if $(wildcard $*.gti),-g $(wildcard $*.gti)) $(PJNAME).evt.gz $@
 
 # Light Curve
 .PHONY : lc
@@ -401,14 +400,14 @@ image : $(PJNAME).img
 # Event
 .PHONY : event
 
-event : $(PJNAME).evt
+event : $(PJNAME).evt.gz
 
-%.evt : %_3x3.csis %_5x5.csis
+$(PJNAME).evt : $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis
 	-rm -f $@
-	$(XSELW) -e event "$*_3x3.csis $*_5x5.csis" $@
+	$(XSELW) -e event "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
 
 # Clean SIS
-%3x3.csis : $(SRC3x3)
+$(PJNAME)_3x3.csis : $(SRC3x3)
 	-rm -f $@
 	$(PLRN) $(CSIS)
 	$(CSIS) \
@@ -421,7 +420,7 @@ event : $(PJNAME).evt
 		phamin=0 \
 		phamax=4095
 
-%5x5.csis : $(SRC5x5)
+$(PJNAME)_5x5.csis : $(SRC5x5)
 	-rm -f $@
 	$(PLRN) $(CSIS)
 	$(CSIS) \
@@ -456,6 +455,11 @@ event : $(PJNAME).evt
 #	-rm -f $@
 #	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
 
+# Gzip
+%.gz : %
+	-rm -f $@
+	gzip -9 <$< >$@
+
 # EPS and PDF
 .ps.eps :
 	-rm -f $@
@@ -469,7 +473,7 @@ event : $(PJNAME).evt
 .PHONY : clean
 
 clean :
-	rm -f *.evt *.caldb *.csis *.pha *.rmf *.arf *.parf *.rsp *.prsp *.nxb *.img *.lc
+	rm -f *.evt *.evt.gz *.caldb *.csis *.pha *.pha.gz *.rmf *.arf *.parf *.rsp *.rsp.gz *.prsp *.prsp.gz *.nxb *.nxb.gz *.img *.lc
 
 # Parameter
 .PHONY : param
