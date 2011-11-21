@@ -1,0 +1,219 @@
+#/bin/sh
+
+CMDNAME=`basename $0`
+XSELCMD=.xselcmd.$$
+XSEL=xselect
+
+# Default Value
+CUTOFF_COR2=8
+
+USAGE()
+{
+	echo "Usage: $CMDNAME -e EXTRACT_TARGET [ -r REGION_FILE] [ -g GTI_FILE ] [ -c \"MIN_PI MAX_PI\"] [ -b BIN_SIZE ] [ -h EHK_FILE ] [ -C COR2 ] EVENT_FILE OUTPUT_FILE" 1>&2
+}
+
+while getopts e:r:c:b:h:g:C: OPT
+do
+	case "$OPT" in
+		e)
+			EXTRACT="TRUE"
+			EXTRACT_TARGET="$OPTARG"
+			;;
+		r)
+			REGION="TRUE"
+			REGION_FILE="$OPTARG"
+			if [ ! -r $REGION_FILE ]; then
+				echo "Region File: $REGION_FILE does not exist." 1>&2
+				exit 1
+			fi
+			;;
+		c)
+			CUTOFF="TRUE"
+			CUTOFF_PHA="$OPTARG"
+			;;
+		b)
+			BIN="TRUE"
+			BINSIZE="$OPTARG"
+			;;
+		h)
+			HK="TRUE"
+			HK_FILE="$OPTARG"
+			;;
+		g)
+			GTI="TRUE"
+			GTI_FILE="$GTI_FILE $OPTARG"
+			;;
+		C)
+			CUTOFF_COR2="$OPTARG"
+			;;
+		*)
+			USAGE
+			exit 1
+			;;
+	esac
+done
+shift $(($OPTIND - 1))
+
+# Usage Check
+if [ $# -lt 2 ]; then
+	USAGE
+	exit 1
+fi
+
+#if [ ! -r $1 ]; then
+#echo "Event file $1 does not exist." 1>&2
+#exit 1
+#fi
+
+if [ "$EXTRACT" != "TRUE" ]; then
+	USAGE
+	exit 1
+fi
+
+REGION_CMD()
+{
+	if [ "$REGION" = "TRUE" ]; then
+		cat <<EOF >>$XSELCMD
+filter region $REGION_FILE
+EOF
+	fi
+}
+
+CUTOFF_CMD()
+{
+	if [ "$CUTOFF" = "TRUE" ]; then
+		cat <<EOF >>$XSELCMD
+filter pha_cutoff $CUTOFF_PHA
+EOF
+	fi
+}
+
+COR_CMD()
+{
+	if [ "$HK" = "TRUE" ]; then
+		cat <<EOF >>$XSELCMD
+read hk
+`dirname $HK_FILE`
+`basename $HK_FILE`
+yes
+
+filter hk
+COR2>$CUTOFF_COR2
+EOF
+	fi
+}
+
+GTI_CMD()
+{
+
+	if [ "$GTI" = "TRUE" ]; then
+		cat <<EOF >>$XSELCMD
+filter time file
+$GTI_FILE
+EOF
+	fi
+}
+
+# Output file check
+if [ -r $2 ]; then
+	echo "Output file $2 already exists." 1>&2
+	exit 1
+fi
+
+# Main
+case "$EXTRACT_TARGET" in
+	[sS][pP][eE][cC])
+		cat <<EOF > $XSELCMD
+xsel
+no
+read events "$1"
+.
+EOF
+		REGION_CMD
+		CUTOFF_CMD
+		COR_CMD
+		GTI_CMD
+		cat <<EOF >> $XSELCMD
+extract spec
+save spec $2
+no
+quit
+no
+EOF
+		;;
+	[eE][vV][eE][nN][tT])
+		cat <<EOF > $XSELCMD
+xsel
+no
+read events "$1"
+.
+EOF
+		REGION_CMD
+		CUTOFF_CMD
+		COR_CMD
+		GTI_CMD
+		cat <<EOF >> $XSELCMD
+extract event
+save event $2
+no
+quit
+no
+EOF
+		;;
+	[lL][cC])
+		if [ "$BIN" != "TRUE" ]; then
+			BINSIZE=256
+		fi
+		cat <<EOF > $XSELCMD
+xsel
+no
+read events "$1"
+.
+EOF
+		REGION_CMD
+		CUTOFF_CMD
+		COR_CMD
+		GTI_CMD
+		cat <<EOF >> $XSELCMD
+set binsize $BINSIZE
+extract curve
+save curve $2
+plot curve
+wenviron `echo $2 | sed 's/^\([^\.]*\)\..*/\1/'`
+quit
+quit
+no
+EOF
+		;;
+	[iI][mM][aA][gG][eE])
+		if [ "$BIN" != "TRUE" ]; then
+			BINSIZE=8
+		fi
+		cat <<EOF > $XSELCMD
+xsel
+no
+read events "$1"
+.
+EOF
+		REGION_CMD
+		CUTOFF_CMD
+		COR_CMD
+		GTI_CMD
+		cat <<EOF >> $XSELCMD
+set xybinsize $BINSIZE
+extract image
+save image $2
+quit
+no
+EOF
+		;;
+	*)
+		echo "Specified target ($EXTRACT_TARGET) has not yet supported." 1>&2
+		exit 1
+		;;
+esac
+
+$XSEL < $XSELCMD
+rm -f $XSELCMD
+
+exit 0
