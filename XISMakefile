@@ -2,8 +2,11 @@
 # XISMakefile
 #
 
+VER		= 20100519
+
 # Initialization
 XSEL	= xselect
+XSELW	= xselect-wrapper
 XSPEC	= xspec
 PI		= xispi
 PLRN	= punlearn
@@ -11,20 +14,34 @@ CSIS	= cleansis
 RMFGEN	= xisrmfgen
 ARFGEN	= xissimarfgen
 NXBGEN	= xisnxbgen
+ADDARF	= addarf
 
-.SUFFIXES: .evt .evt.gz .reg .pha .img .lc .fits .rmf .arf .ps .eps .pdf
+PARAM	= _Parameters.txt
+
+.SUFFIXES:
+.SUFFIXES: .evt .caldb .csis .reg .pha .img .fits .rmf .arf .parf .nxb .ps .eps .pdf .txt
+
+.PRECIOUS: %.txt %.caldb %.csis %.evt %.pha %.rmf %.arf %.parf %.nxb
 
 # Default Parameters
-XSEL_PHACUTOFF	= filter pha_cutoff 137 192		# XSELECT pha_cutoff Parameter (default to oxygen range 0.5-0.7keV)
-ARF_PCNT		= 1000000						# ARF Gen num_photon Parameter (default to program default)
-NXB_TIME_MIN	= -150							# NXB Gen time_min Parameter (default to program default)
-NXB_TIME_MAX	= +150							# NXB Gen time_max Parameter (default to program default)
+
+# Project Name (default to the current directory name)
+PJNAME			= $(shell basename $(shell pwd))
+# ARF Gen parallel count (default to 1)
+NPROCS			= 1
+# XSELECT pha_cutoff Parameter (default to oxygen range 0.5-0.7keV)
+PHACUTOFF		= 137 192
+# ARF Gen num_photon Parameter (default to program default)
+ARF_PCNT		= 1000000
+# NXB Gen time_min/max Parameter (default to program default)
+NXB_TIME_MIN	= -150
+NXB_TIME_MAX	= +150
 
 # Override Default Parameters
-include _Parameters.txt
+-include $(PARAM)
 
 # Files
-XISROOT	=  $(ROOT)/xis
+XISROOT	:= $(ROOT)/xis
 SRC3x3	:= $(wildcard $(XISROOT)/event_cl/*xi1*3x3*.evt.gz)
 SRC5x5	:= $(wildcard $(XISROOT)/event_cl/*xi1*5x5*.evt.gz)
 HKFILE	:= $(wildcard $(XISROOT)/hk/*xi1*.hk.gz)
@@ -35,8 +52,9 @@ ORBFILE	:= $(wildcard $(ROOT)/auxil/*.orb.gz)
 # Targets
 #
 .PHONY : all
+
 all :
-	@echo Please state targets from followings: image imager imageco imagerco lc lcr lcrco spec rmf arf nxb xspec
+	@echo Please state targets from followings: param event image imager imageco imagerco lc lcco lcr lcrco spec rmf arf nxb xspec
 
 # XSPEC (spec rmf arf nxb)
 .PHONY : xspec
@@ -48,57 +66,31 @@ xspec : spec rmf arf nxb
 
 nxb : $(PJNAME).nxb
 
-$(PJNAME).nxb : $(PJNAME).pha $(PJNAME).reg $(ATTFILE) $(ORBFILE)
-	rm -f $@
+%.nxb : %.pha %.reg $(ATTFILE) $(ORBFILE)
+	-rm -f $@
 	$(NXBGEN) \
-		$(PJNAME).nxb \
-		$(PJNAME).pha \
+		$@ \
+		$< \
 		SKYREG \
-		$(PJNAME).reg \
+		$*.reg \
 		$(ORBFILE) \
 		$(ATTFILE) \
 		pixq_and=0 pi_min=274 pi_max=548 \
 		time_min=$(NXB_TIME_MIN) \
-		time_max=$(NXB_TIME_MAX)
+		time_max=$(NXB_TIME_MAX) \
+		clobber=yes detmask=none
 
 # ARF
 .PHONY : arf
 
 arf : $(PJNAME).arf
 
-$(PJNAME).arf : $(PJNAME).evt $(PJNAME).reg $(PJNAME).pha $(PJNAME).rmf $(ATTFILE)
-	rm -f $@
-	$(ARFGEN) \
-		clobber=yes \
-		instrume=XIS1 \
-		teldef=CALDB \
-		leapfile=CALDB \
-		mirrorfile=CALDB \
-		reflectfile=CALDB \
-		backproffile=CALDB \
-		shieldfile=CALDB \
-		calmaskfile='none' \
-		pointing=AUTO \
-		source_mode=UNIFORM \
-		source_rmin=0 \
-		source_rmax=20 \
-		num_region=1 \
-		region_mode=SKYREG \
-		regfile1=$(PJNAME).reg \
-		arffile1=$(PJNAME).arf \
-		limit_mode=MIXED \
-		num_photon=$(ARF_PCNT) \
-		accuracy=0.005 \
-		phafile=$(PJNAME).pha \
-		detmask='none' \
-		gtifile=$(PJNAME).evt \
-		attitude=$(ATTFILE) \
-		rmffile=$(PJNAME).rmf \
-		estepfile=medium
+# ARF Generation in Parallel
+ifeq ($(NPROCS),1)
 
-# RMF to ARF
-.rmf.arf : $(PJNAME).evt $*.reg $*.pha $(ATTFILE)
-	rm -f $@
+# RMF to ARF (Single Thread)
+%.arf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+	-rm -f $@
 	$(ARFGEN) \
 		clobber=yes \
 		instrume=XIS1 \
@@ -124,21 +116,154 @@ $(PJNAME).arf : $(PJNAME).evt $(PJNAME).reg $(PJNAME).pha $(PJNAME).rmf $(ATTFIL
 		detmask='none' \
 		gtifile=$(PJNAME).evt \
 		attitude=$(ATTFILE) \
-		rmffile=$*.rmf \
+		rmffile=$< \
 		estepfile=medium
+
+else
+
+# RMF to ARF (Multi Thread)
+
+PID		:= $(shell echo $$$$)
+ARFCMD	:= .arfcmd.$(PID)
+ARFLIST	:= .arflist.$(PID)
+
+%.arf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+	-rm -f $@
+	-rm -f $(ARFCMD) $(ARFLIST)
+	for i in {1..$(NPROCS)}; \
+	do \
+		echo \
+			clobber=yes \
+			instrume=XIS1 \
+			teldef=CALDB \
+			leapfile=CALDB \
+			mirrorfile=CALDB \
+			reflectfile=CALDB \
+			backproffile=CALDB \
+			shieldfile=CALDB \
+			calmaskfile='none' \
+			pointing=AUTO \
+			source_mode=UNIFORM \
+			source_rmin=0 \
+			source_rmax=20 \
+			num_region=1 \
+			region_mode=SKYREG \
+			regfile1=$*.reg \
+			arffile1=$@$$i \
+			limit_mode=MIXED \
+			num_photon=`expr $(ARF_PCNT) / $(NPROCS)` \
+			accuracy=0.005 \
+			phafile=$*.pha \
+			detmask='none' \
+			gtifile=$(PJNAME).evt \
+			attitude=$(ATTFILE) \
+			rmffile=$< \
+			estepfile=medium \
+			rand_seed=$$i >>  $(ARFCMD); \
+		echo $@$$i `echo 'scale=2; 1/$(NPROCS)' | bc` >> $(ARFLIST); \
+	done
+	cat $(ARFCMD) | xargs -L1 -t -P$(NPROCS) $(ARFGEN)
+	$(ADDARF) @$(ARFLIST) out_ARF=$@
+	-rm -f $@{1..$(NPROCS)}
+	-rm -f $(ARFCMD) $(ARFLIST)
+
+endif
+
+# PARF
+
+ifeq ($(NPROCS),1)
+
+# RMF to Point-ARF (Single Thread)
+%.parf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+	-test `grep -i circle $*.reg | wc -l` -ne 1 \
+		(echo Error: Multiple regions not allowed. ; exit 1;)
+	-rm -f $@
+	$(ARFGEN) \
+		clobber=yes \
+		instrume=XIS1 \
+		teldef=CALDB \
+		leapfile=CALDB \
+		mirrorfile=CALDB \
+		reflectfile=CALDB \
+		backproffile=CALDB \
+		shieldfile=CALDB \
+		calmaskfile='none' \
+		pointing=AUTO \
+		source_mode=SKYXY \
+		source_x=`cat $*.reg | grep -i circle | sed -e 's/.*(\([^,]*\),.*/\1/'` \
+		source_y=`cat $*.reg | grep -i circle | sed -e 's/.*([^,]*,\([^,]*\),.*/\1/'` \
+		num_region=1 \
+		region_mode=SKYREG \
+		regfile1=$*.reg \
+		arffile1=$@ \
+		limit_mode=MIXED \
+		num_photon=$(ARF_PCNT) \
+		accuracy=0.005 \
+		phafile=$*.pha \
+		detmask='none' \
+		gtifile=$(PJNAME).evt \
+		attitude=$(ATTFILE) \
+		rmffile=$< \
+		estepfile=medium
+
+else
+
+# RMF to Point-ARF (Multi Thread)
+
+PID		:= $(shell echo $$$$)
+PARFCMD	:= .parfcmd.$(PID)
+PARFLIST:= .parflist.$(PID)
+
+%.parf : %.rmf $(PJNAME).evt %.reg %.pha $(ATTFILE)
+	-rm -f $@
+	-rm -f $(PARFCMD) $(PARFLIST)
+	for i in {1..$(NPROCS)}; \
+	do \
+		echo \
+			clobber=yes \
+			instrume=XIS1 \
+			teldef=CALDB \
+			leapfile=CALDB \
+			mirrorfile=CALDB \
+			reflectfile=CALDB \
+			backproffile=CALDB \
+			shieldfile=CALDB \
+			calmaskfile='none' \
+			pointing=AUTO \
+			source_mode=SKYXY \
+			source_x=`cat $*.reg | grep -i circle | sed -e 's/.*(\([^,]*\),.*/\1/'` \
+			source_y=`cat $*.reg | grep -i circle | sed -e 's/.*([^,]*,\([^,]*\),.*/\1/'` \
+			num_region=1 \
+			region_mode=SKYREG \
+			regfile1=$*.reg \
+			arffile1=$@$$i \
+			limit_mode=MIXED \
+			num_photon=`expr $(ARF_PCNT) / $(NPROCS)` \
+			accuracy=0.005 \
+			phafile=$*.pha \
+			detmask='none' \
+			gtifile=$(PJNAME).evt \
+			attitude=$(ATTFILE) \
+			rmffile=$< \
+			estepfile=medium \
+			rand_seed=$$i >>  $(PARFCMD); \
+		echo $@$$i `echo 'scale=2; 1/$(NPROCS)' | bc` >> $(PARFLIST); \
+	done
+	cat $(PARFCMD) | xargs -L1 -t -P$(NPROCS) $(ARFGEN)
+	$(ADDARF) @$(PARFLIST) out_ARF=$@
+	-rm -f $@{1..$(NPROCS)}
+	-rm -f $(PARFCMD) $(PARFLIST)
+
+endif
 
 # RMF
 .PHONY : rmf
 
 rmf : $(PJNAME).rmf
 
-$(PJNAME).rmf : $(PJNAME).pha
-	rm -f $@
-	$(RMFGEN) phafile=$< outfile=$@
-
 # PHA to RMF
 .pha.rmf :
-	rm -f $@
+	-rm -f $@
 	$(RMFGEN) phafile=$< outfile=$@
 
 # Spectrum
@@ -146,141 +271,50 @@ $(PJNAME).rmf : $(PJNAME).pha
 
 spec : $(PJNAME).pha
 
-define CSET_XSEL_SPEC
-xsel
-no
-read events $(PJNAME).evt
-.
-filter region $(PJNAME).reg
-extract spec
-save spec $(PJNAME).pha
-no
-quit
-no
-endef
-export CSET_XSEL_SPEC
-
-$(PJNAME).pha : $(PJNAME).evt $(PJNAME).reg
-	rm -f $@
-	@echo "$$CSET_XSEL_SPEC" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-# REG to PHA
-.reg.pha : $(PJNAME).evt
-	define CSET_XSEL_SPEC
-	xsel
-	no
-	read events $(PJNAME).evt
-	.
-	filter region $*.reg
-	extract spec
-	save spec $@
-	no
-	quit
-	no
-	endef
-	export CSET_XSEL_SPEC
-	rm -f $@
-	@echo "$$CSET_XSEL_SPEC" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
+# EVT to PHA
+%.pha : %.reg $(PJNAME).evt
+	-rm -f $@
+	$(XSELW) -e spec -r $< $(PJNAME).evt $@
 
 # Light Curve (all energy level)
 .PHONY : lc
 
 lc : $(PJNAME)_lc.fits
 
-define CSET_XSEL_LC
-xsel
-no
-read events $(PJNAME).evt
-.
-set binsize 256
-extract curve
-save curve $(PJNAME)_lc.fits
-cpd /xw
-plot curve
-la file
-hardcopy $(PJNAME)_lc.ps/cps
-wenviron $(PJNAME)_lc
-quit
-quit
-no
-endef
-export CSET_XSEL_LC
-
 $(PJNAME)_lc.fits : $(PJNAME).evt
-	rm -f $@ $*.ps $*.pco $*.qdp
+	-rm -f $@ $*.ps $*.pco $*.qdp
 	open -a X11
-	@echo "$$CSET_XSEL_LC" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
+	$(XSELW) -e lc $< $*
 
 # Light Curve (with region masking)
 .PHONY : lcr
 
 lcr : $(PJNAME)_lc_reg.fits
 
-define CSET_XSEL_LC_MASK
-xsel
-no
-read events $(PJNAME).evt
-.
-set binsize 256
-filter region $(PJNAME).reg
-extract curve
-save curve $(PJNAME)_lc_reg.fits
-cpd /xw
-plot curve
-la file
-hardcopy $(PJNAME)_lc_reg.ps/cps
-wenviron $(PJNAME)_lc_reg
-quit
-quit
-no
-endef
-export CSET_XSEL_LC_MASK
-
 $(PJNAME)_lc_reg.fits : $(PJNAME).evt $(PJNAME).reg
-	rm -f $@ $*.ps $*.pco $*.qdp
+	-rm -f $@ $*.ps $*.pco $*.qdp
 	open -a X11
-	@echo "$$CSET_XSEL_LC_MASK" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
+	$(XSELW) -e lc -r $(PJNAME).reg $< $*
 
-# Light Curve (with region masking + cutoff filter)
+# Light Curve (with pha cutoff)
+.PHONY : lcco
+
+lcco : $(PJNAME)_lc_co.fits
+
+$(PJNAME)_lc_co.fits : $(PJNAME).evt
+	-rm -f $@ $*.ps $*.pco $*.qdp
+	open -a X11
+	$(XSELW) -e lc -c "$(PHACUTOFF)" $< $*
+
+# Light Curve (with region masking + pha cutoff)
 .PHONY : lcrco
 
 lcrco : $(PJNAME)_lc_reg_co.fits
 
-define CSET_XSEL_LC_MASK_CO
-xsel
-no
-read events $(PJNAME).evt
-.
-set binsize 256
-filter region $(PJNAME).reg
-$(XSEL_PHACUTOFF)
-extract curve
-save curve $(PJNAME)_lc_reg_co.fits
-cpd /xw
-plot curve
-la file
-hardcopy $(PJNAME)_lc_reg_co.ps/cps
-wenviron $(PJNAME)_lc_reg_co
-quit
-quit
-no
-endef
-export CSET_XSEL_LC_MASK_CO
-
 $(PJNAME)_lc_reg_co.fits : $(PJNAME).evt $(PJNAME).reg
-	rm -f $@ $*.ps $*.pco $*.qdp
+	-rm -f $@ $*.ps $*.pco $*.qdp
 	open -a X11
-	@echo "$$CSET_XSEL_LC_MASK_CO" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
+	$(XSELW) -e lc -r $(PJNAME).reg -c "$(PHACUTOFF)" $< $*
 
 # Image (with region masking + cutoff filter)
 .PHONY : imagerco
@@ -293,7 +327,7 @@ no
 read events $(PJNAME).evt
 .
 set xybinsize 8
-$(XSEL_PHACUTOFF)
+filter pha_cutoff $(PHACUTOFF)
 filter region $(PJNAME).reg
 extract image
 save image $(PJNAME)_8_reg_co.img
@@ -308,7 +342,7 @@ no
 read events $(PJNAME).evt
 .
 set xybinsize 16
-$(XSEL_PHACUTOFF)
+filter pha_cutoff $(PHACUTOFF)
 filter region $(PJNAME).reg
 extract image
 save image $(PJNAME)_16_reg_co.img
@@ -467,88 +501,88 @@ $(PJNAME)_16.img : $(PJNAME).evt
 	rm -f .cset
 
 # Event
-define CSET_XSEL_EVT
-xsel
-no
-read events "$(PJNAME)_3x3_csis.evt $(PJNAME)_5x5_csis.evt"
-.
-extract event
-save event
-$(PJNAME).evt
-no
-quit
-no
-endef
-export CSET_XSEL_EVT
+.PHONY : event
 
-$(PJNAME).evt : $(PJNAME)_3x3_csis.evt $(PJNAME)_5x5_csis.evt
-	rm -f $@
-	@echo "$$CSET_XSEL_EVT" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
+event : $(PJNAME).evt
+
+$(PJNAME).evt : $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis
+	-rm -f $@
+	$(XSELW) -e event "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
 
 # CALDB
-$(PJNAME)_3x3_caldb.evt : $(SRC3x3) $(HKFILE)
-	rm -f $@
+$(PJNAME)_3x3.caldb : $(SRC3x3) $(HKFILE)
+	-rm -f $@
 	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
 
-$(PJNAME)_5x5_caldb.evt : $(SRC5x5) $(HKFILE)
-	rm -f $@
+$(PJNAME)_5x5.caldb : $(SRC5x5) $(HKFILE)
+	-rm -f $@
 	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
 
 # Clean SIS
-define CSET_CSIS_3x3
-$(PJNAME)_3x3_caldb.evt
-$(PJNAME)_3x3_csis.evt
-5
--5.3
-3
-0
-4095
-endef
-export CSET_CSIS_3x3
-
-define CSET_CSIS_5x5
-$(PJNAME)_5x5_caldb.evt
-$(PJNAME)_5x5_csis.evt
-5
--5.3
-3
-0
-4095
-endef
-export CSET_CSIS_5x5
-
-$(PJNAME)_3x3_csis.evt : $(PJNAME)_3x3_caldb.evt
-	rm -f $@
+.caldb.csis :
+	-rm -f $@
 	$(PLRN) $(CSIS)
-	@echo "$$CSET_CSIS_3x3" > .cset
-	$(CSIS) chipcol=SEGMENT < .cset
-	rm -f .cset
-
-$(PJNAME)_5x5_csis.evt : $(PJNAME)_5x5_caldb.evt
-	rm -f $@
-	$(PLRN) $(CSIS)
-	@echo "$$CSET_CSIS_5x5" > .cset
-	$(CSIS) chipcol=SEGMENT < .cset
-	rm -f .cset
+	$(CSIS) \
+		chipcol=SEGMENT \
+		datafile=$< \
+		outfile=$@ \
+		cellsize=5 \
+		logprob=-5.3 \
+		bthresh=3 \
+		phamin=0 \
+		phamax=4095
 
 # EPS and PDF
 .ps.eps :
-	rm -f $@
+	-rm -f $@
 	ps2eps -R=+ --ignoreBB $<
 
 .eps.pdf :
-	rm -f $@
+	-rm -f $@
 	epstopdf $<
 
 # Clean
 .PHONY : clean cleanimage cleanlc
 
 clean : cleanimage cleanlc
-
+	rm -f *.evt *.caldb *.csis *.pha *.rmf *.arf *.nxb
 cleanimage :
 	rm -f $(PJNAME)*.img
 
 cleanlc :
-	rm -f $(PJNAME)_lc_*.fits $(PJNAME)_lc_*.ps $(PJNAME)_lc_*.pco $(PJNAME)_lc_*.qdp
+	rm -f $(PJNAME)_lc*.fits $(PJNAME)_lc*.ps $(PJNAME)_lc*.pco $(PJNAME)_lc*.qdp
+
+# Parameter
+.PHONY : param
+
+param : $(PARAM)
+
+define PARAMETERS
+# XIS Makefile Parameters
+#
+# Version: $(VER)
+
+# Project Name
+PJNAME		= $(PJNAME)
+
+# Suzaku Data Source
+ROOT		= ***CHANGE*HERE***
+
+# Parallel Job Count for ARF Gen
+NPROCS		= $(NPROCS)
+
+# PHA Cutoff Range (default to oxygen range)
+PHACUTOFF	= $(PHACUTOFF)
+
+# ARF Gen Photon Count
+ARF_PCNT	= $(ARF_PCNT)
+
+# NXB Gen
+NXB_TIME_MIN	= $(NXB_TIME_MIN)
+NXB_TIME_MAX	= $(NXB_TIME_MAX)
+endef
+export PARAMETERS
+
+$(PARAM) :
+	@echo "$$PARAMETERS" > $@
+	@echo Parameter file generated.
