@@ -1,0 +1,554 @@
+#
+# XISMakefile
+#
+
+# Initialization
+XSEL	= xselect
+XSPEC	= xspec
+PI		= xispi
+PLRN	= punlearn
+CSIS	= cleansis
+RMFGEN	= xisrmfgen
+ARFGEN	= xissimarfgen
+NXBGEN	= xisnxbgen
+
+.SUFFIXES: .evt .evt.gz .reg .pha .img .lc .fits .rmf .arf .ps .eps .pdf
+
+# Default Parameters
+XSEL_PHACUTOFF	= filter pha_cutoff 137 192		# XSELECT pha_cutoff Parameter (default to oxygen range 0.5-0.7keV)
+ARF_PCNT		= 1000000						# ARF Gen num_photon Parameter (default to program default)
+NXB_TIME_MIN	= -150							# NXB Gen time_min Parameter (default to program default)
+NXB_TIME_MAX	= +150							# NXB Gen time_max Parameter (default to program default)
+
+# Override Default Parameters
+include _Parameters.txt
+
+# Files
+XISROOT	=  $(ROOT)/xis
+SRC3x3	:= $(wildcard $(XISROOT)/event_cl/*xi1*3x3*.evt.gz)
+SRC5x5	:= $(wildcard $(XISROOT)/event_cl/*xi1*5x5*.evt.gz)
+HKFILE	:= $(wildcard $(XISROOT)/hk/*xi1*.hk.gz)
+ATTFILE	:= $(wildcard $(ROOT)/auxil/*.att.gz)
+ORBFILE	:= $(wildcard $(ROOT)/auxil/*.orb.gz)
+
+#
+# Targets
+#
+.PHONY : all
+all :
+	@echo Please state targets from followings: image imager imageco imagerco lc lcr lcrco spec rmf arf nxb xspec
+
+# XSPEC (spec rmf arf nxb)
+.PHONY : xspec
+
+xspec : spec rmf arf nxb
+
+# NXB
+.PHONY : nxb
+
+nxb : $(PJNAME).nxb
+
+$(PJNAME).nxb : $(PJNAME).pha $(PJNAME).reg $(ATTFILE) $(ORBFILE)
+	rm -f $@
+	$(NXBGEN) \
+		$(PJNAME).nxb \
+		$(PJNAME).pha \
+		SKYREG \
+		$(PJNAME).reg \
+		$(ORBFILE) \
+		$(ATTFILE) \
+		pixq_and=0 pi_min=274 pi_max=548 \
+		time_min=$(NXB_TIME_MIN) \
+		time_max=$(NXB_TIME_MAX)
+
+# ARF
+.PHONY : arf
+
+arf : $(PJNAME).arf
+
+$(PJNAME).arf : $(PJNAME).evt $(PJNAME).reg $(PJNAME).pha $(PJNAME).rmf $(ATTFILE)
+	rm -f $@
+	$(ARFGEN) \
+		clobber=yes \
+		instrume=XIS1 \
+		teldef=CALDB \
+		leapfile=CALDB \
+		mirrorfile=CALDB \
+		reflectfile=CALDB \
+		backproffile=CALDB \
+		shieldfile=CALDB \
+		calmaskfile='none' \
+		pointing=AUTO \
+		source_mode=UNIFORM \
+		source_rmin=0 \
+		source_rmax=20 \
+		num_region=1 \
+		region_mode=SKYREG \
+		regfile1=$(PJNAME).reg \
+		arffile1=$(PJNAME).arf \
+		limit_mode=MIXED \
+		num_photon=$(ARF_PCNT) \
+		accuracy=0.005 \
+		phafile=$(PJNAME).pha \
+		detmask='none' \
+		gtifile=$(PJNAME).evt \
+		attitude=$(ATTFILE) \
+		rmffile=$(PJNAME).rmf \
+		estepfile=medium
+
+# RMF to ARF
+.rmf.arf : $(PJNAME).evt $*.reg $*.pha $(ATTFILE)
+	rm -f $@
+	$(ARFGEN) \
+		clobber=yes \
+		instrume=XIS1 \
+		teldef=CALDB \
+		leapfile=CALDB \
+		mirrorfile=CALDB \
+		reflectfile=CALDB \
+		backproffile=CALDB \
+		shieldfile=CALDB \
+		calmaskfile='none' \
+		pointing=AUTO \
+		source_mode=UNIFORM \
+		source_rmin=0 \
+		source_rmax=20 \
+		num_region=1 \
+		region_mode=SKYREG \
+		regfile1=$*.reg \
+		arffile1=$@ \
+		limit_mode=MIXED \
+		num_photon=$(ARF_PCNT) \
+		accuracy=0.005 \
+		phafile=$*.pha \
+		detmask='none' \
+		gtifile=$(PJNAME).evt \
+		attitude=$(ATTFILE) \
+		rmffile=$*.rmf \
+		estepfile=medium
+
+# RMF
+.PHONY : rmf
+
+rmf : $(PJNAME).rmf
+
+$(PJNAME).rmf : $(PJNAME).pha
+	rm -f $@
+	$(RMFGEN) phafile=$< outfile=$@
+
+# PHA to RMF
+.pha.rmf :
+	rm -f $@
+	$(RMFGEN) phafile=$< outfile=$@
+
+# Spectrum
+.PHONY : spec
+
+spec : $(PJNAME).pha
+
+define CSET_XSEL_SPEC
+xsel
+no
+read events $(PJNAME).evt
+.
+filter region $(PJNAME).reg
+extract spec
+save spec $(PJNAME).pha
+no
+quit
+no
+endef
+export CSET_XSEL_SPEC
+
+$(PJNAME).pha : $(PJNAME).evt $(PJNAME).reg
+	rm -f $@
+	@echo "$$CSET_XSEL_SPEC" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# REG to PHA
+.reg.pha : $(PJNAME).evt
+	define CSET_XSEL_SPEC
+	xsel
+	no
+	read events $(PJNAME).evt
+	.
+	filter region $*.reg
+	extract spec
+	save spec $@
+	no
+	quit
+	no
+	endef
+	export CSET_XSEL_SPEC
+	rm -f $@
+	@echo "$$CSET_XSEL_SPEC" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Light Curve (all energy level)
+.PHONY : lc
+
+lc : $(PJNAME)_lc.fits
+
+define CSET_XSEL_LC
+xsel
+no
+read events $(PJNAME).evt
+.
+set binsize 256
+extract curve
+save curve $(PJNAME)_lc.fits
+cpd /xw
+plot curve
+la file
+hardcopy $(PJNAME)_lc.ps/cps
+wenviron $(PJNAME)_lc
+quit
+quit
+no
+endef
+export CSET_XSEL_LC
+
+$(PJNAME)_lc.fits : $(PJNAME).evt
+	rm -f $@ $*.ps $*.pco $*.qdp
+	open -a X11
+	@echo "$$CSET_XSEL_LC" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Light Curve (with region masking)
+.PHONY : lcr
+
+lcr : $(PJNAME)_lc_reg.fits
+
+define CSET_XSEL_LC_MASK
+xsel
+no
+read events $(PJNAME).evt
+.
+set binsize 256
+filter region $(PJNAME).reg
+extract curve
+save curve $(PJNAME)_lc_reg.fits
+cpd /xw
+plot curve
+la file
+hardcopy $(PJNAME)_lc_reg.ps/cps
+wenviron $(PJNAME)_lc_reg
+quit
+quit
+no
+endef
+export CSET_XSEL_LC_MASK
+
+$(PJNAME)_lc_reg.fits : $(PJNAME).evt $(PJNAME).reg
+	rm -f $@ $*.ps $*.pco $*.qdp
+	open -a X11
+	@echo "$$CSET_XSEL_LC_MASK" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Light Curve (with region masking + cutoff filter)
+.PHONY : lcrco
+
+lcrco : $(PJNAME)_lc_reg_co.fits
+
+define CSET_XSEL_LC_MASK_CO
+xsel
+no
+read events $(PJNAME).evt
+.
+set binsize 256
+filter region $(PJNAME).reg
+$(XSEL_PHACUTOFF)
+extract curve
+save curve $(PJNAME)_lc_reg_co.fits
+cpd /xw
+plot curve
+la file
+hardcopy $(PJNAME)_lc_reg_co.ps/cps
+wenviron $(PJNAME)_lc_reg_co
+quit
+quit
+no
+endef
+export CSET_XSEL_LC_MASK_CO
+
+$(PJNAME)_lc_reg_co.fits : $(PJNAME).evt $(PJNAME).reg
+	rm -f $@ $*.ps $*.pco $*.qdp
+	open -a X11
+	@echo "$$CSET_XSEL_LC_MASK_CO" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Image (with region masking + cutoff filter)
+.PHONY : imagerco
+
+imagerco : $(PJNAME)_8_reg_co.img $(PJNAME)_16_reg_co.img
+
+define CSET_XSEL_IMG_8_MASK_CO
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 8
+$(XSEL_PHACUTOFF)
+filter region $(PJNAME).reg
+extract image
+save image $(PJNAME)_8_reg_co.img
+quit
+no
+endef
+export CSET_XSEL_IMG_8_MASK_CO
+
+define CSET_XSEL_IMG_16_MASK_CO
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 16
+$(XSEL_PHACUTOFF)
+filter region $(PJNAME).reg
+extract image
+save image $(PJNAME)_16_reg_co.img
+quit
+no
+endef
+
+export CSET_XSEL_IMG_16_MASK_CO
+
+$(PJNAME)_8_reg_co.img : $(PJNAME).evt
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_8_MASK_CO" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+$(PJNAME)_16_reg_co.img : $(PJNAME).evt
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_16_MASK_CO" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Image (with cutoff filter)
+.PHONY : imageco
+
+imageco : $(PJNAME)_8_co.img $(PJNAME)_16_co.img
+
+define CSET_XSEL_IMG_8_CO
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 8
+filter pha_cutoff 137 192
+extract image
+save image $(PJNAME)_8_co.img
+quit
+no
+endef
+export CSET_XSEL_IMG_8_CO
+
+define CSET_XSEL_IMG_16_CO
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 16
+filter pha_cutoff 137 192
+extract image
+save image $(PJNAME)_16_co.img
+quit
+no
+endef
+
+export CSET_XSEL_IMG_16_CO
+
+$(PJNAME)_8_co.img : $(PJNAME).evt
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_8_CO" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+$(PJNAME)_16_co.img : $(PJNAME).evt
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_16_CO" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Image (with region masking)
+.PHONY : imager
+
+imager : $(PJNAME)_8_reg.img $(PJNAME)_16_reg.img
+
+define CSET_XSEL_IMG_8_MASK
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 8
+filter region $(PJNAME).reg
+extract image
+save image $(PJNAME)_8_reg.img
+quit
+no
+endef
+export CSET_XSEL_IMG_8_MASK
+
+define CSET_XSEL_IMG_16_MASK
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 16
+filter region $(PJNAME).reg
+extract image
+save image $(PJNAME)_16_reg.img
+quit
+no
+endef
+
+export CSET_XSEL_IMG_16_MASK
+
+$(PJNAME)_8_reg.img : $(PJNAME).evt $(PJNAME).reg
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_8_MASK" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+$(PJNAME)_16_reg.img : $(PJNAME).evt $(PJNAME).reg
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_16_MASK" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Image (no region masking)
+.PHONY : image
+
+image : $(PJNAME)_8.img $(PJNAME)_16.img
+
+define CSET_XSEL_IMG_8
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 8
+extract image
+save image $(PJNAME)_8.img
+quit
+no
+endef
+export CSET_XSEL_IMG_8
+
+define CSET_XSEL_IMG_16
+xsel
+no
+read events $(PJNAME).evt
+.
+set xybinsize 16
+extract image
+save image $(PJNAME)_16.img
+quit
+no
+endef
+
+export CSET_XSEL_IMG_16
+
+$(PJNAME)_8.img : $(PJNAME).evt
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_8" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+$(PJNAME)_16.img : $(PJNAME).evt
+	rm -f $@
+	@echo "$$CSET_XSEL_IMG_16" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# Event
+define CSET_XSEL_EVT
+xsel
+no
+read events "$(PJNAME)_3x3_csis.evt $(PJNAME)_5x5_csis.evt"
+.
+extract event
+save event
+$(PJNAME).evt
+no
+quit
+no
+endef
+export CSET_XSEL_EVT
+
+$(PJNAME).evt : $(PJNAME)_3x3_csis.evt $(PJNAME)_5x5_csis.evt
+	rm -f $@
+	@echo "$$CSET_XSEL_EVT" > .cset
+	$(XSEL) < .cset
+	rm -f .cset
+
+# CALDB
+$(PJNAME)_3x3_caldb.evt : $(SRC3x3) $(HKFILE)
+	rm -f $@
+	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
+
+$(PJNAME)_5x5_caldb.evt : $(SRC5x5) $(HKFILE)
+	rm -f $@
+	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
+
+# Clean SIS
+define CSET_CSIS_3x3
+$(PJNAME)_3x3_caldb.evt
+$(PJNAME)_3x3_csis.evt
+5
+-5.3
+3
+0
+4095
+endef
+export CSET_CSIS_3x3
+
+define CSET_CSIS_5x5
+$(PJNAME)_5x5_caldb.evt
+$(PJNAME)_5x5_csis.evt
+5
+-5.3
+3
+0
+4095
+endef
+export CSET_CSIS_5x5
+
+$(PJNAME)_3x3_csis.evt : $(PJNAME)_3x3_caldb.evt
+	rm -f $@
+	$(PLRN) $(CSIS)
+	@echo "$$CSET_CSIS_3x3" > .cset
+	$(CSIS) chipcol=SEGMENT < .cset
+	rm -f .cset
+
+$(PJNAME)_5x5_csis.evt : $(PJNAME)_5x5_caldb.evt
+	rm -f $@
+	$(PLRN) $(CSIS)
+	@echo "$$CSET_CSIS_5x5" > .cset
+	$(CSIS) chipcol=SEGMENT < .cset
+	rm -f .cset
+
+# EPS and PDF
+.ps.eps :
+	rm -f $@
+	ps2eps -R=+ --ignoreBB $<
+
+.eps.pdf :
+	rm -f $@
+	epstopdf $<
+
+# Clean
+.PHONY : clean cleanimage cleanlc
+
+clean : cleanimage cleanlc
+
+cleanimage :
+	rm -f $(PJNAME)*.img
+
+cleanlc :
+	rm -f $(PJNAME)_lc_*.fits $(PJNAME)_lc_*.ps $(PJNAME)_lc_*.pco $(PJNAME)_lc_*.qdp
