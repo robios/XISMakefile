@@ -2,7 +2,11 @@
 # XISMakefile
 #
 
-VER		= 20100608
+VER		= 20101129
+
+# History
+# 20100901 - GTIフィルタ対応 (Default/Specific両対応)
+# 20101129 - Cleaned Eventにxispiをかけていたのを止めた
 
 # Programs
 XSEL	= xselect
@@ -33,6 +37,8 @@ ARF_PCNT		:= 1000000
 # NXB Gen time_min/max Parameter (default to program default)
 NXB_TIME_MIN	:= -150
 NXB_TIME_MAX	:= +150
+# XSelect Default GTI Filter File (default to null)
+GTI_FILE		:=
 
 # Override Default Parameters
 -include $(PARAM)
@@ -58,7 +64,7 @@ ORBFILE	:= $(wildcard $(ROOT)/auxil/ae*.orb.gz)
 # Initialization
 
 .SUFFIXES:
-.SUFFIXES: .evt .caldb .csis .reg .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .ps .eps .pdf .txt
+.SUFFIXES: .evt .caldb .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .ps .eps .pdf .txt
 
 .PRECIOUS: %.evt %.pha %.rsp %.prsp %.nxb
 
@@ -67,6 +73,21 @@ ORBFILE	:= $(wildcard $(ROOT)/auxil/ae*.orb.gz)
 # Instrument Full Name
 INSTRMF	:= XIS$(subst xi,,$(INSTRM))
 
+# Construct XSELW Commands
+XSELCMD := -h $(EHKFILE)
+ifneq ($(PHACUTOFF),)
+	XSELCMD := $(XSELCMD) -c "$(PHACUTOFF)"
+endif
+ifneq ($(REGION),)
+	XSELCMD := $(XSELCMD) -r $(REGION)
+endif
+ifneq ($(IMGBIN),)
+	XSELCMD := $(XSELCMD) -b $(IMGBIN)
+endif
+ifneq ($(GTI_FILE),)
+	XSELCMD := $(XSELCMD) -g $(GTI_FILE)
+endif
+
 #
 # Targets
 #
@@ -74,6 +95,7 @@ INSTRMF	:= XIS$(subst xi,,$(INSTRM))
 
 all :
 	@echo Please state a target from : param event image lc spec rsp nxb xspec
+	@echo For image and lc, following run-time parameters can be set: PHACUTOFF, REGION, IMGBIN
 
 # XSPEC (spec rsp nxb)
 .PHONY : xspec
@@ -307,51 +329,27 @@ endif
 spec : $(PJNAME).pha
 
 # EVT to PHA
-%.pha : %.reg $(PJNAME).evt
+%.pha : %.reg $(GTI_FILE) $(PJNAME).evt
 	-rm -f $@
-	$(XSELW) -e spec -h $(EHKFILE) -r $< $(PJNAME).evt $@
+	$(XSELW) -e spec $(XSELCMD) -r $< $(if $(wildcard $*.gti),-g $(wildcard $*.gti)) $(PJNAME).evt $@
 
 # Light Curve
 .PHONY : lc
 
 lc : $(PJNAME).lc
 
-%.lc : $(PJNAME).evt
+%.lc : $(PJNAME).evt $(GTI_FILE)
 	-rm -f $@
-ifdef PHACUTOFF
-ifdef REGION
-	$(XSELW) -e lc -h $(EHKFILE) -r $(REGION) -c "$(PHACUTOFF)" $< $*
-else
-	$(XSELW) -e lc -h $(EHKFILE) -c "$(PHACUTOFF)" $< $*
-endif
-else
-ifdef REGION
-	$(XSELW) -e lc -h $(EHKFILE) -r $(REGION) $< $*
-else
-	$(XSELW) -e lc -h $(EHKFILE) $< $*
-endif
-endif
+	$(XSELW) -e lc $(XSELCMD) $< $*
 
 # Image
 .PHONY : image
 
 image : $(PJNAME).img
 
-%.img : $(PJNAME).evt
+%.img : $(PJNAME).evt $(GTI_FILE)
 	-rm -f $@
-ifdef PHACUTOFF
-ifdef REGION
-	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) -r $(REGION) -c "$(PHACUTOFF)" $< $*
-else
-	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) -c "$(PHACUTOFF)" $< $*
-endif
-else
-ifdef REGION
-	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) -r $(REGION) $< $*
-else
-	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) $< $*
-endif
-endif
+	$(XSELW) -e image $(XSELCMD) $< $*
 
 # Event
 .PHONY : event
@@ -363,12 +361,12 @@ event : $(PJNAME).evt
 	$(XSELW) -e event "$*_3x3.csis $*_5x5.csis" $@
 
 # Clean SIS
-.caldb.csis :
+%3x3.csis : $(SRC3x3)
 	-rm -f $@
 	$(PLRN) $(CSIS)
 	$(CSIS) \
 		chipcol=SEGMENT \
-		datafile=$< \
+		datafile=$(SRC3x3) \
 		outfile=$@ \
 		cellsize=5 \
 		logprob=-5.3 \
@@ -376,14 +374,40 @@ event : $(PJNAME).evt
 		phamin=0 \
 		phamax=4095
 
-# CALDB
-%3x3.caldb : $(SRC3x3) $(HKFILE)
+%5x5.csis : $(SRC5x5)
 	-rm -f $@
-	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
+	$(PLRN) $(CSIS)
+	$(CSIS) \
+		chipcol=SEGMENT \
+		datafile=$(SRC5x5) \
+		outfile=$@ \
+		cellsize=5 \
+		logprob=-5.3 \
+		bthresh=3 \
+		phamin=0 \
+		phamax=4095
 
-%5x5.caldb : $(SRC5x5) $(HKFILE)
-	-rm -f $@
-	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
+#.caldb.csis :
+#	-rm -f $@
+#	$(PLRN) $(CSIS)
+#	$(CSIS) \
+#		chipcol=SEGMENT \
+#		datafile=$< \
+#		outfile=$@ \
+#		cellsize=5 \
+#		logprob=-5.3 \
+#		bthresh=3 \
+#		phamin=0 \
+#		phamax=4095
+
+## CALDB
+#%3x3.caldb : $(SRC3x3) $(HKFILE)
+#	-rm -f $@
+#	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
+#
+#%5x5.caldb : $(SRC5x5) $(HKFILE)
+#	-rm -f $@
+#	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
 
 # EPS and PDF
 .ps.eps :
@@ -421,6 +445,9 @@ INSTRM		= $(INSTRM)
 
 # Parallel Job Count for ARF Gen
 NPROCS		= $(NPROCS)
+
+# Default GTI File
+GTI_FILE	= $(GTI_FILE)
 
 # ARF Gen Photon Count
 ARF_PCNT	= $(ARF_PCNT)
