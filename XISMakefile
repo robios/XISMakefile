@@ -2,9 +2,9 @@
 # XISMakefile
 #
 
-VER		= 20100519
+VER		= 20100608
 
-# Initialization
+# Programs
 XSEL	= xselect
 XSELW	= xselect-wrapper
 XSPEC	= xspec
@@ -15,38 +15,57 @@ RMFGEN	= xisrmfgen
 ARFGEN	= xissimarfgen
 NXBGEN	= xisnxbgen
 ADDARF	= addarf
+MARFRMF	= marfrmf
 
+# External Parameter Filename
 PARAM	= _Parameters.txt
 
-.SUFFIXES:
-.SUFFIXES: .evt .caldb .csis .reg .pha .img .fits .rmf .arf .parf .nxb .ps .eps .pdf .txt
-
-.PRECIOUS: %.txt %.caldb %.csis %.evt %.pha %.rmf %.arf %.parf %.nxb
-
-# Default Parameters
+# Default Parameters (to be overriden by _Paramter.txt)
 
 # Project Name (default to the current directory name)
-PJNAME			= $(shell basename $(shell pwd))
+PJNAME			:= $(shell basename $(shell pwd))
+# Instruments (default to XIS1)
+INSTRM			:= xi1
 # ARF Gen parallel count (default to 1)
-NPROCS			= 1
-# XSELECT pha_cutoff Parameter (default to oxygen range 0.5-0.7keV)
-PHACUTOFF		= 137 192
+NPROCS			:= 1
 # ARF Gen num_photon Parameter (default to program default)
-ARF_PCNT		= 1000000
+ARF_PCNT		:= 1000000
 # NXB Gen time_min/max Parameter (default to program default)
-NXB_TIME_MIN	= -150
-NXB_TIME_MAX	= +150
+NXB_TIME_MIN	:= -150
+NXB_TIME_MAX	:= +150
 
 # Override Default Parameters
 -include $(PARAM)
 
-# Files
+# Runtime Paramters (to be overriden by make option)
+
+# XSELECT pha_cutoff Parameter (default to no filter)
+PHACUTOFF		:=
+# XSELECT region file (default to no filter)
+REGION			:=
+# XSELECT image bin size
+IMGBIN			:= 8
+
+# Common Files
 XISROOT	:= $(ROOT)/xis
-SRC3x3	:= $(wildcard $(XISROOT)/event_cl/*xi1*3x3*.evt.gz)
-SRC5x5	:= $(wildcard $(XISROOT)/event_cl/*xi1*5x5*.evt.gz)
-HKFILE	:= $(wildcard $(XISROOT)/hk/*xi1*.hk.gz)
-ATTFILE	:= $(wildcard $(ROOT)/auxil/*.att.gz)
-ORBFILE	:= $(wildcard $(ROOT)/auxil/*.orb.gz)
+SRC3x3	:= $(wildcard $(XISROOT)/event_cl/ae*$(INSTRM)*3x3*.evt.gz)
+SRC5x5	:= $(wildcard $(XISROOT)/event_cl/ae*$(INSTRM)*5x5*.evt.gz)
+HKFILE	:= $(wildcard $(XISROOT)/hk/ae*$(INSTRM)*.hk.gz)
+EHKFILE	:= $(wildcard $(ROOT)/auxil/ae*.ehk.gz)
+ATTFILE	:= $(wildcard $(ROOT)/auxil/ae*.att.gz)
+ORBFILE	:= $(wildcard $(ROOT)/auxil/ae*.orb.gz)
+
+# Initialization
+
+.SUFFIXES:
+.SUFFIXES: .evt .caldb .csis .reg .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .ps .eps .pdf .txt
+
+.PRECIOUS: %.evt %.pha %.rsp %.prsp %.nxb
+
+.INTERMEDIATE: %.rmf %.arf %.parf
+
+# Instrument Full Name
+INSTRMF	:= XIS$(subst xi,,$(INSTRM))
 
 #
 # Targets
@@ -54,12 +73,12 @@ ORBFILE	:= $(wildcard $(ROOT)/auxil/*.orb.gz)
 .PHONY : all
 
 all :
-	@echo Please state targets from followings: param event image imager imageco imagerco lc lcco lcr lcrco spec rmf arf nxb xspec
+	@echo Please state a target from : param event image lc spec rsp nxb xspec
 
-# XSPEC (spec rmf arf nxb)
+# XSPEC (spec rsp nxb)
 .PHONY : xspec
 
-xspec : spec rmf arf nxb
+xspec : spec rsp nxb
 
 # NXB
 .PHONY : nxb
@@ -80,10 +99,26 @@ nxb : $(PJNAME).nxb
 		time_max=$(NXB_TIME_MAX) \
 		clobber=yes detmask=none
 
-# ARF
-.PHONY : arf
+# Response
+.PHONY : rsp
 
-arf : $(PJNAME).arf
+rsp : $(PJNAME).rsp
+
+%.rsp : %.arf
+	-rm -f $@
+	$(MARFRMF) $*.rmf $*.arf $@
+
+# Response for Point Src
+.PHONY : prsp
+
+%.prsp : %.parf
+	-rm -f $@
+	$(MARFRMF) $*.rmf $*.parf $@
+
+# ARF
+#.PHONY : arf
+#
+#arf : $(PJNAME).arf
 
 # ARF Generation in Parallel
 ifeq ($(NPROCS),1)
@@ -93,7 +128,7 @@ ifeq ($(NPROCS),1)
 	-rm -f $@
 	$(ARFGEN) \
 		clobber=yes \
-		instrume=XIS1 \
+		instrume=$(INSTRMF) \
 		teldef=CALDB \
 		leapfile=CALDB \
 		mirrorfile=CALDB \
@@ -134,7 +169,7 @@ ARFLIST	:= .arflist.$(PID)
 	do \
 		echo \
 			clobber=yes \
-			instrume=XIS1 \
+			instrume=$(INSTRMF) \
 			teldef=CALDB \
 			leapfile=CALDB \
 			mirrorfile=CALDB \
@@ -180,7 +215,7 @@ ifeq ($(NPROCS),1)
 	-rm -f $@
 	$(ARFGEN) \
 		clobber=yes \
-		instrume=XIS1 \
+		instrume=$(INSTRMF) \
 		teldef=CALDB \
 		leapfile=CALDB \
 		mirrorfile=CALDB \
@@ -221,7 +256,7 @@ PARFLIST:= .parflist.$(PID)
 	do \
 		echo \
 			clobber=yes \
-			instrume=XIS1 \
+			instrume=$(INSTRMF) \
 			teldef=CALDB \
 			leapfile=CALDB \
 			mirrorfile=CALDB \
@@ -257,12 +292,12 @@ PARFLIST:= .parflist.$(PID)
 endif
 
 # RMF
-.PHONY : rmf
-
-rmf : $(PJNAME).rmf
+#.PHONY : rmf
+#
+#rmf : $(PJNAME).rmf
 
 # PHA to RMF
-.pha.rmf :
+%.rmf : %.pha
 	-rm -f $@
 	$(RMFGEN) phafile=$< outfile=$@
 
@@ -274,249 +309,58 @@ spec : $(PJNAME).pha
 # EVT to PHA
 %.pha : %.reg $(PJNAME).evt
 	-rm -f $@
-	$(XSELW) -e spec -r $< $(PJNAME).evt $@
+	$(XSELW) -e spec -h $(EHKFILE) -r $< $(PJNAME).evt $@
 
-# Light Curve (all energy level)
+# Light Curve
 .PHONY : lc
 
-lc : $(PJNAME)_lc.fits
+lc : $(PJNAME).lc
 
-$(PJNAME)_lc.fits : $(PJNAME).evt
-	-rm -f $@ $*.ps $*.pco $*.qdp
-	open -a X11
-	$(XSELW) -e lc $< $*
+%.lc : $(PJNAME).evt
+	-rm -f $@
+ifdef PHACUTOFF
+ifdef REGION
+	$(XSELW) -e lc -h $(EHKFILE) -r $(REGION) -c "$(PHACUTOFF)" $< $*
+else
+	$(XSELW) -e lc -h $(EHKFILE) -c "$(PHACUTOFF)" $< $*
+endif
+else
+ifdef REGION
+	$(XSELW) -e lc -h $(EHKFILE) -r $(REGION) $< $*
+else
+	$(XSELW) -e lc -h $(EHKFILE) $< $*
+endif
+endif
 
-# Light Curve (with region masking)
-.PHONY : lcr
-
-lcr : $(PJNAME)_lc_reg.fits
-
-$(PJNAME)_lc_reg.fits : $(PJNAME).evt $(PJNAME).reg
-	-rm -f $@ $*.ps $*.pco $*.qdp
-	open -a X11
-	$(XSELW) -e lc -r $(PJNAME).reg $< $*
-
-# Light Curve (with pha cutoff)
-.PHONY : lcco
-
-lcco : $(PJNAME)_lc_co.fits
-
-$(PJNAME)_lc_co.fits : $(PJNAME).evt
-	-rm -f $@ $*.ps $*.pco $*.qdp
-	open -a X11
-	$(XSELW) -e lc -c "$(PHACUTOFF)" $< $*
-
-# Light Curve (with region masking + pha cutoff)
-.PHONY : lcrco
-
-lcrco : $(PJNAME)_lc_reg_co.fits
-
-$(PJNAME)_lc_reg_co.fits : $(PJNAME).evt $(PJNAME).reg
-	-rm -f $@ $*.ps $*.pco $*.qdp
-	open -a X11
-	$(XSELW) -e lc -r $(PJNAME).reg -c "$(PHACUTOFF)" $< $*
-
-# Image (with region masking + cutoff filter)
-.PHONY : imagerco
-
-imagerco : $(PJNAME)_8_reg_co.img $(PJNAME)_16_reg_co.img
-
-define CSET_XSEL_IMG_8_MASK_CO
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 8
-filter pha_cutoff $(PHACUTOFF)
-filter region $(PJNAME).reg
-extract image
-save image $(PJNAME)_8_reg_co.img
-quit
-no
-endef
-export CSET_XSEL_IMG_8_MASK_CO
-
-define CSET_XSEL_IMG_16_MASK_CO
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 16
-filter pha_cutoff $(PHACUTOFF)
-filter region $(PJNAME).reg
-extract image
-save image $(PJNAME)_16_reg_co.img
-quit
-no
-endef
-
-export CSET_XSEL_IMG_16_MASK_CO
-
-$(PJNAME)_8_reg_co.img : $(PJNAME).evt
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_8_MASK_CO" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-$(PJNAME)_16_reg_co.img : $(PJNAME).evt
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_16_MASK_CO" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-# Image (with cutoff filter)
-.PHONY : imageco
-
-imageco : $(PJNAME)_8_co.img $(PJNAME)_16_co.img
-
-define CSET_XSEL_IMG_8_CO
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 8
-filter pha_cutoff 137 192
-extract image
-save image $(PJNAME)_8_co.img
-quit
-no
-endef
-export CSET_XSEL_IMG_8_CO
-
-define CSET_XSEL_IMG_16_CO
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 16
-filter pha_cutoff 137 192
-extract image
-save image $(PJNAME)_16_co.img
-quit
-no
-endef
-
-export CSET_XSEL_IMG_16_CO
-
-$(PJNAME)_8_co.img : $(PJNAME).evt
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_8_CO" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-$(PJNAME)_16_co.img : $(PJNAME).evt
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_16_CO" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-# Image (with region masking)
-.PHONY : imager
-
-imager : $(PJNAME)_8_reg.img $(PJNAME)_16_reg.img
-
-define CSET_XSEL_IMG_8_MASK
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 8
-filter region $(PJNAME).reg
-extract image
-save image $(PJNAME)_8_reg.img
-quit
-no
-endef
-export CSET_XSEL_IMG_8_MASK
-
-define CSET_XSEL_IMG_16_MASK
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 16
-filter region $(PJNAME).reg
-extract image
-save image $(PJNAME)_16_reg.img
-quit
-no
-endef
-
-export CSET_XSEL_IMG_16_MASK
-
-$(PJNAME)_8_reg.img : $(PJNAME).evt $(PJNAME).reg
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_8_MASK" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-$(PJNAME)_16_reg.img : $(PJNAME).evt $(PJNAME).reg
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_16_MASK" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-# Image (no region masking)
+# Image
 .PHONY : image
 
-image : $(PJNAME)_8.img $(PJNAME)_16.img
+image : $(PJNAME).img
 
-define CSET_XSEL_IMG_8
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 8
-extract image
-save image $(PJNAME)_8.img
-quit
-no
-endef
-export CSET_XSEL_IMG_8
-
-define CSET_XSEL_IMG_16
-xsel
-no
-read events $(PJNAME).evt
-.
-set xybinsize 16
-extract image
-save image $(PJNAME)_16.img
-quit
-no
-endef
-
-export CSET_XSEL_IMG_16
-
-$(PJNAME)_8.img : $(PJNAME).evt
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_8" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
-
-$(PJNAME)_16.img : $(PJNAME).evt
-	rm -f $@
-	@echo "$$CSET_XSEL_IMG_16" > .cset
-	$(XSEL) < .cset
-	rm -f .cset
+%.img : $(PJNAME).evt
+	-rm -f $@
+ifdef PHACUTOFF
+ifdef REGION
+	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) -r $(REGION) -c "$(PHACUTOFF)" $< $*
+else
+	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) -c "$(PHACUTOFF)" $< $*
+endif
+else
+ifdef REGION
+	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) -r $(REGION) $< $*
+else
+	$(XSELW) -e image -b $(IMGBIN) -h $(EHKFILE) $< $*
+endif
+endif
 
 # Event
 .PHONY : event
 
 event : $(PJNAME).evt
 
-$(PJNAME).evt : $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis
+%.evt : %_3x3.csis %_5x5.csis
 	-rm -f $@
-	$(XSELW) -e event "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
-
-# CALDB
-$(PJNAME)_3x3.caldb : $(SRC3x3) $(HKFILE)
-	-rm -f $@
-	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
-
-$(PJNAME)_5x5.caldb : $(SRC5x5) $(HKFILE)
-	-rm -f $@
-	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
+	$(XSELW) -e event "$*_3x3.csis $*_5x5.csis" $@
 
 # Clean SIS
 .caldb.csis :
@@ -532,6 +376,15 @@ $(PJNAME)_5x5.caldb : $(SRC5x5) $(HKFILE)
 		phamin=0 \
 		phamax=4095
 
+# CALDB
+%3x3.caldb : $(SRC3x3) $(HKFILE)
+	-rm -f $@
+	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
+
+%5x5.caldb : $(SRC5x5) $(HKFILE)
+	-rm -f $@
+	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
+
 # EPS and PDF
 .ps.eps :
 	-rm -f $@
@@ -542,15 +395,10 @@ $(PJNAME)_5x5.caldb : $(SRC5x5) $(HKFILE)
 	epstopdf $<
 
 # Clean
-.PHONY : clean cleanimage cleanlc
+.PHONY : clean
 
-clean : cleanimage cleanlc
-	rm -f *.evt *.caldb *.csis *.pha *.rmf *.arf *.nxb
-cleanimage :
-	rm -f $(PJNAME)*.img
-
-cleanlc :
-	rm -f $(PJNAME)_lc*.fits $(PJNAME)_lc*.ps $(PJNAME)_lc*.pco $(PJNAME)_lc*.qdp
+clean :
+	rm -f *.evt *.caldb *.csis *.pha *.rmf *.arf *.parf *.rsp *.prsp *.nxb *.img *.lc
 
 # Parameter
 .PHONY : param
@@ -568,11 +416,11 @@ PJNAME		= $(PJNAME)
 # Suzaku Data Source
 ROOT		= ***CHANGE*HERE***
 
+# Instrument Names (xi0/xi1/xi3)
+INSTRM		= $(INSTRM)
+
 # Parallel Job Count for ARF Gen
 NPROCS		= $(NPROCS)
-
-# PHA Cutoff Range (default to oxygen range)
-PHACUTOFF	= $(PHACUTOFF)
 
 # ARF Gen Photon Count
 ARF_PCNT	= $(ARF_PCNT)
