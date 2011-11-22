@@ -2,7 +2,7 @@
 # XISMakefile
 #
 
-VER		= 20111114
+VER		= 20111121
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
@@ -10,6 +10,7 @@ VER		= 20111114
 # 20101201 - aepipeline後のデータに対応
 # 20101204 - NXB生成をPINUDに対応
 # 20111114 - 生成物をgzip
+# 20111121 - QDPに対応
 
 # Programs
 XSEL	= xselect
@@ -24,6 +25,7 @@ NXBGEN	= xisnxbgen
 ADDARF	= addarf
 MARFRMF	= marfrmf
 MKPINHK = aemkpinudhk
+QDP		= qdp
 
 # External Parameter Filename
 PARAM	= _Parameters.txt
@@ -76,7 +78,7 @@ HXDHKFILE	:= $(wildcard $(HXDROOT)/hk/ae*_0.hk*)
 # Initialization
 
 .SUFFIXES:
-.SUFFIXES: .evt .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .txt .gz
+.SUFFIXES: .evt .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .qdp .txt .gz
 
 .PRECIOUS: %.evt.gz %.pha.gz %.rsp.gz %.prsp.gz %.nxb.gz
 
@@ -460,10 +462,21 @@ $(PJNAME)_5x5.csis : $(SRC5x5)
 	-rm -f $@
 	gzip -9 <$< >$@
 
+# QDP to PS
+QDP_COMMAND := $(shell mktemp)
+%.ps : %.qdp
+	-rm -f $@
+	echo "$*.ps/cps\nquit" > $(QDP_COMMAND)
+	$(QDP) $< < $(QDP_COMMAND)
+	rm $(QDP_COMMAND)
+
 # EPS and PDF
 .ps.eps :
 	-rm -f $@
 	ps2eps -R=+ --ignoreBB -l $<
+	mv $@ $*-temp.eps
+	eps2eps -dNOCACHE $*-temp.eps $@
+	rm $*-temp.eps
 
 .eps.pdf :
 	-rm -f $@
