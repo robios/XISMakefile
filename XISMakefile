@@ -463,7 +463,7 @@ $(PJNAME)_5x5.csis : $(SRC5x5)
 	gzip -9 <$< >$@
 
 # QDP to PS
-QDP_COMMAND := $(shell mktemp)
+QDP_COMMAND := $(shell mktemp -u XXXXXX)
 %.ps : %.qdp
 	-rm -f $@
 	echo "$*.ps/cps\nquit" > $(QDP_COMMAND)
