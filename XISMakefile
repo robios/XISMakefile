@@ -11,6 +11,7 @@ VER		= 20111121
 # 20101204 - NXB生成をPINUDに対応
 # 20111114 - 生成物をgzip
 # 20111121 - QDPに対応
+# 20120217 - COR Screeningに対応
 
 # Programs
 XSEL	= xselect
@@ -63,6 +64,8 @@ IMGBIN			:= 8
 NXB_COR_STEP	:= "0,4,5,6,7,8,9,10,11,12,13,99"
 NXB_PINUD_STEP	:= "100,150,175,200,225,250,275,300,325,350,375,400,425,450,500"
 NXB_EHK_MARGIN	:= 30.0
+# COR Screening (using COR2)
+COR				:=
 
 # Common Files
 XISROOT		:= $(ROOT)/xis
@@ -100,6 +103,9 @@ ifneq ($(IMGBIN),)
 endif
 ifneq ($(GTI_FILE),)
 	XSELCMD := $(XSELCMD) -g $(GTI_FILE)
+endif
+ifneq ($(COR),)
+	XSELCMD := $(XSELCMD) -C $(COR)
 endif
 
 #
