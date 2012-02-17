@@ -91,7 +91,7 @@ HXDHKFILE	:= $(wildcard $(HXDROOT)/hk/ae*_0.hk*)
 INSTRMF	:= XIS$(subst xi,,$(INSTRM))
 
 # Construct XSELW Commands
-XSELCMD := -h $(EHKFILE)
+XSELCMD :=
 ifneq ($(PHACUTOFF),)
 	XSELCMD := $(XSELCMD) -c "$(PHACUTOFF)"
 endif
@@ -105,7 +105,7 @@ ifneq ($(GTI_FILE),)
 	XSELCMD := $(XSELCMD) -g $(GTI_FILE)
 endif
 ifneq ($(COR),)
-	XSELCMD := $(XSELCMD) -C $(COR)
+	XSELCMD := $(XSELCMD) -h $(EHKFILE) -C $(COR)
 endif
 
 #

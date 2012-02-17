@@ -44,6 +44,7 @@ do
 			GTI_FILE="$GTI_FILE $OPTARG"
 			;;
 		C)
+			COR2="TRUE"
 			CUTOFF_COR2="$OPTARG"
 			;;
 		*)
@@ -67,6 +68,11 @@ fi
 
 if [ "$EXTRACT" != "TRUE" ]; then
 	USAGE
+	exit 1
+fi
+
+if [ "$COR2" = "TRUE" -a "$HK" != "TRUE" ]; then
+	echo "Please specify EHK file (-h) when screening by COR2." 
 	exit 1
 fi
 
