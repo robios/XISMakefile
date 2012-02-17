@@ -2,7 +2,7 @@
 # XISMakefile
 #
 
-VER		= 20111121
+VER		= 20120217
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
