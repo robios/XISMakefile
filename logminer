@@ -1,0 +1,206 @@
+#!/bin/sh
+
+GAWK=gawk
+
+USAGE()
+{
+	echo "Usage: $0 [options] logfile" 1>&2
+	echo
+	echo "Options:"
+	echo "  -a  show all parameters"
+	echo "  -T  convert temperature from keV to log10(T)"
+	echo "  -n  normalization coefficient (defaulted to 20' radius)"
+	echo "  -p  convert normalization to 10^-3 pc cm^-6"
+	echo "      (only for apec/meka/mekal)"
+	echo "  -s  Scale * sin(param) for vabmkl (defaulted to 90 degrees)"
+	echo "  -g  Significant figures (defaulted to 7)"
+	echo "  -l  LaTeX output"
+	exit 1
+}
+
+COEF=-1
+SCALESIN=90.0
+FIGURES=7
+
+while getopts aTn:ps:g:l OPT
+do
+	case "$OPT" in
+		a)
+			ALL="TRUE"
+			;;
+		T)
+			KEV2T="TRUE"
+			;;
+		n)
+			COEF="$OPTARG"
+			;;
+		p)
+			PC="TRUE"
+			;;
+		s)
+			SCALESIN="$OPTARG"
+			;;
+		g)
+			FIGURES="$OPTARG"
+			;;
+		l)
+			LATEX="TRUE"
+			;;
+		*)
+			USAGE
+			exit 1
+			;;
+	esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -lt 1 ]; then
+	USAGE
+	exit 1
+fi
+
+logfile=$1
+
+# Check existence of the given file
+if [ ! -r $1 ]; then
+	if [ ! -r $1.log ]; then
+		echo "$1 does not exist."
+		exit 1
+	else
+		logfile=$1.log
+	fi
+fi
+
+echo "Log: $1"
+$GAWK '
+BEGIN {
+	PI = 3.1415926535
+	KEV = 1.60217653e-19*1e3
+	K = 1.380662e-23
+	PCCM = 3.0856776e+1 / 4 / PI
+	COEF = '"$COEF"' < 0 ? 1/PI/(20./60./180.*PI)**2 : '"$COEF"'
+	KEV2T = KEV/K
+	MAX = -1
+}
+
+$2 == "Data" && $3 == "group:" {
+	CURGRP = $4
+}
+
+substr($0, 58, 3) == "+/-" || ("'"$ALL"'" == "TRUE" && (substr($0, 58, 6) == "frozen" || substr($0, 58, 1) == "=")) {
+	USE[$2] = 1
+	VALUE[$2] = substr($0, 45, 13) * 1.0
+	GROUP[$2] = CURGRP
+	COMP[$2] = $4
+	PARAM[$2] = $5
+	if($5 == "norm") {
+		VALUE[$2] = VALUE[$2] * COEF
+		USE[$2] = 2
+	 }
+
+	if($5 == "kT" && "'"$KEV2T"'" == "TRUE") {
+		VALUE[$2] = roundf(log(VALUE[$2] * KEV2T) / log(10), 7)
+		USE[$2] = 3
+	}
+
+	if($5 == "norm" && ($4 ~ /apec/ || $4 ~/meka/) \
+			&& "'"$PC"'" == "TRUE") {
+		VALUE[$2] = roundf(VALUE[$2] / PCCM, 7)
+	}
+
+	if($4 == "vabmkl" && $5 == "Scale") {
+		VALUE[$2] = roundf(VALUE[$2] * sin('"$SCALESIN"' * 1.0 / 180.0 * PI), 7)
+	}
+
+	if($2 > MAX)
+		MAX = $2
+}
+
+substr($0, 38, 1) == "(" {
+	if(USE[$2] == 2) {
+		LERR[$2] = $3 * COEF
+		UERR[$2] = $4 * COEF
+		if((COMP[$2] ~ /apec/ || COMP[$2] ~/meka/) \
+			&& "'"$PC"'" == "TRUE") {
+				LERR[$2] = roundf(LERR[$2] / PCCM, 7)
+				UERR[$2] = roundf(UERR[$2] / PCCM, 7)
+		}
+	} else if(USE[$2] == 3) {
+		LERR[$2] = log($3 * KEV2T)/log(10)
+		UERR[$2] = log($4 * KEV2T)/log(10)
+	} else {
+		LERR[$2] = $3 * 1.0
+		UERR[$2] = $4 * 1.0
+		if(COMP[$2] == "vabmkl" && PARAM[$2] == "Scale") {
+			LERR[$2] = roundf(LERR[$2] * sin('"$SCALESIN"' * 1.0 / 180.0 * PI), 7)
+			UERR[$2] = roundf(UERR[$2] * sin('"$SCALESIN"' * 1.0 / 180.0 * PI), 7)
+		}
+	}
+	ERROR[$2] = 1
+}
+
+$1 == "#Model" && $0 ~ /Source/ {
+	MODEL = substr($0, 8, index($0, " Source") - 8)
+}
+
+$2 == "Chi-Squared" && $3 == "=" {
+	CHI = $4
+}
+
+$2 == "Reduced" {
+	REDCHI = $5
+	DOF = $7
+}
+
+END {
+	print "Model: ", MODEL
+	print ""
+	for(i = 1; i <= MAX; i++) {
+		if(USE[i] > 0) {
+			if(ERROR[i] == 1) {
+				if("'"$LATEX"'" == "TRUE") {
+					printf("%3d(%1d) %-10s %-8s $%9.'"$FIGURES"'g_{-%-8.'"$FIGURES"'g}^{+%-8.'"$FIGURES"'g}$\n", i, GROUP[i], COMP[i], PARAM[i], VALUE[i], roundf(VALUE[i] - LERR[i], 6), roundf(UERR[i] - VALUE[i], 6))
+				} else {
+					printf("%3d(%1d) %-10s %-8s %9.'"$FIGURES"'g -%-8.'"$FIGURES"'g +%-8.'"$FIGURES"'g (%9.'"$FIGURES"'g, %9.'"$FIGURES"'g)\n", i, GROUP[i], COMP[i], PARAM[i], VALUE[i], roundf(VALUE[i] - LERR[i], 6), roundf(UERR[i] - VALUE[i], 6), LERR[i], UERR[i])
+				}
+			} else {
+				printf("%3d(%1d) %-10s %-8s %9.'"$FIGURES"'g\n", i, GROUP[i], COMP[i], PARAM[i], VALUE[i])
+			}
+		}
+	}
+	print ""
+	printf("Fit: %.2f/%d (%f)\n", CHI, DOF, REDCHI)
+}
+
+function roundf(x, digits)
+{
+	return round(x * 10**digits) / 10**digits
+}
+
+function round(x, ival, aval, fraction)
+{
+	ival = int(x)    # integer part, int() truncates
+
+	# see if fractional part
+	if (ival == x)   # no fraction
+		return ival   # ensure no decimals
+
+	if (x < 0) {
+		aval = -x     # absolute value
+		ival = int(aval)
+		fraction = aval - ival
+		if (fraction >= .5)
+			return int(x) - 1   # -2.5 --> -3
+		else
+			return int(x)       # -2.3 --> -2
+	} else {
+		fraction = x - ival
+		if (fraction >= .5)
+			return ival + 1
+		else
+			return ival
+	}
+}
+
+' $logfile
