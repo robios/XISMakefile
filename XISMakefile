@@ -2,7 +2,7 @@
 # XISMakefile
 #
 
-VER		= 20120217
+VER		= 20120910
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
@@ -12,6 +12,7 @@ VER		= 20120217
 # 20111114 - 生成物をgzip
 # 20111121 - QDPに対応
 # 20120217 - COR Screeningに対応
+# 20120910 - 5x5が無い場合には無視
 
 # Programs
 XSEL	= xselect
@@ -410,9 +411,20 @@ image : $(PJNAME).img
 
 event : $(PJNAME).evt.gz
 
+ifneq ($(SRC5x5),)
+
 $(PJNAME).evt : $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis
 	-rm -f $@
 	$(XSELW) -e event "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
+
+else
+
+$(PJNAME).evt : $(PJNAME)_3x3.csis
+	@echo Warning: Only 3x3 is found.
+	-rm -f $@
+	$(XSELW) -e event "$(PJNAME)_3x3.csis" $@
+
+endif
 
 # Clean SIS
 $(PJNAME)_3x3.csis : $(SRC3x3)
