@@ -185,6 +185,7 @@ set binsize $BINSIZE
 extract curve
 save curve $2
 plot curve
+/xw
 wenviron `echo $2 | sed 's/^\([^\.]*\)\..*/\1/'`
 quit
 quit
