@@ -393,7 +393,7 @@ spec : $(PJNAME).pha.gz
 
 lc : $(PJNAME).lc
 
-%.lc : $(PJNAME).evt $(GTI_FILE)
+%.lc : $(PJNAME).evt.gz $(GTI_FILE)
 	-rm -f $@
 	$(XSELW) -e lc $(XSELCMD) $< $*
 
@@ -402,7 +402,7 @@ lc : $(PJNAME).lc
 
 image : $(PJNAME).img
 
-%.img : $(PJNAME).evt $(GTI_FILE)
+%.img : $(PJNAME).evt.gz $(GTI_FILE)
 	-rm -f $@
 	$(XSELW) -e image $(XSELCMD) $< $*
 
