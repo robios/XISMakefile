@@ -148,6 +148,10 @@ $2 == "Chi-Squared" && $3 == "=" {
 	CHI = $4
 }
 
+$1 == "#Test" && $4 == "Chi-Squared" && $5 == "=" {
+	CHI = $6
+}
+
 $2 == "Reduced" {
 	REDCHI = $5
 	DOF = $7
