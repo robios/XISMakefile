@@ -6,6 +6,7 @@ XSEL=xselect
 
 # Default Value
 CUTOFF_COR2=8
+REGION_FILE=""
 
 USAGE()
 {
@@ -21,11 +22,11 @@ do
 			;;
 		r)
 			REGION="TRUE"
-			REGION_FILE="$OPTARG"
-			if [ ! -r $REGION_FILE ]; then
+			if [ ! -r $OPTARG ]; then
 				echo "Region File: $REGION_FILE does not exist." 1>&2
 				exit 1
 			fi
+			REGION_FILE=$REGION_FILE" $OPTARG"
 			;;
 		c)
 			CUTOFF="TRUE"
@@ -79,9 +80,12 @@ fi
 REGION_CMD()
 {
 	if [ "$REGION" = "TRUE" ]; then
-		cat <<EOF >>$XSELCMD
-filter region $REGION_FILE
+		for r in $REGION_FILE
+		do
+			cat <<EOF >>$XSELCMD
+filter region $r
 EOF
+		done
 	fi
 }
 
