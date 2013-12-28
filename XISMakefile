@@ -5,14 +5,14 @@
 VER		= 20120910
 
 # History
-# 20100901 - GTI$B%U%#%k%?BP1~(B (Default/Specific$BN>BP1~(B)
-# 20101129 - Cleaned Event$B$K(Bxispi$B$r$+$1$F$$$?$N$r;_$a$?(B
-# 20101201 - aepipeline$B8e$N%G!<%?$KBP1~(B
-# 20101204 - NXB$B@8@.$r(BPINUD$B$KBP1~(B
-# 20111114 - $B@8@.J*$r(Bgzip
-# 20111121 - QDP$B$KBP1~(B
-# 20120217 - COR Screening$B$KBP1~(B
-# 20120910 - 5x5$B$,L5$$>l9g$K$OL5;k(B
+# 20100901 - GTIフィルタ対応 (Default/Specific両対応)
+# 20101129 - Cleaned Eventにxispiをかけていたのを止めた
+# 20101201 - aepipeline後のデータに対応
+# 20101204 - NXB生成をPINUDに対応
+# 20111114 - 生成物をgzip
+# 20111121 - QDPに対応
+# 20120217 - COR Screeningに対応
+# 20120910 - 5x5が無い場合には無視
 
 # Programs
 XSEL	= xselect
