@@ -2,7 +2,7 @@
 # XISMakefile
 #
 
-VER		= 20120910
+VER		= 20131228
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
@@ -13,6 +13,7 @@ VER		= 20120910
 # 20111121 - QDPに対応
 # 20120217 - COR Screeningに対応
 # 20120910 - 5x5が無い場合には無視
+# 20131228 - XIS1のCI=6keVに対応
 
 # Programs
 XSEL	= xselect
@@ -49,6 +50,10 @@ NXB_TIME_MAX	:= +150
 GTI_FILE		:=
 # NXB Gen Sortkey
 NXB_SORTKEY		:= COR2
+# XIS1 Charge Injection
+XIS1_CI			:= 6
+REMOVE_STR		:= YES
+
 
 # Override Default Parameters
 -include $(PARAM)
@@ -78,6 +83,7 @@ EHKFILE		:= $(wildcard $(ROOT)/auxil/ae*.ehk*)
 ATTFILE		:= $(wildcard $(ROOT)/auxil/ae*.att*)
 ORBFILE		:= $(wildcard $(ROOT)/auxil/ae*.orb*)
 HXDHKFILE	:= $(wildcard $(HXDROOT)/hk/ae*_0.hk*)
+NXBSCI6FILE	:= $(shell ls -1 $(CALDB)/data/suzaku/xis/bcf/ae_xi1_nxbsci6_*.fits* | sort -r | head -1)
 
 # Initialization
 
@@ -129,6 +135,28 @@ xspec : spec rsp nxb
 
 nxb : $(PJNAME).nxb.gz
 
+# Construct Extra Parameters
+ifeq ($(INSTRM),xi1)
+
+# Use NXBSCI6?
+ifeq ($(XIS1_CI),6)
+NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) nxbevent=$(NXBSCI6FILE)
+	
+# Remove Second Trailing Rows?
+ifeq ($(REMOVE_STR),YES)
+NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=327680
+else
+NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=0
+endif
+
+else
+NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=0
+endif
+
+else
+NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=0
+endif
+
 # NXB from PINUD
 ifeq ($(NXB_SORTKEY),PINUD)
 
@@ -145,10 +173,10 @@ ifeq ($(NXB_SORTKEY),PINUD)
 		sortstep=$(NXB_PINUD_STEP) \
 		ehkfile=$(PJNAME).pinud \
 		ehk_margin_sec=$(NXB_EHK_MARGIN) \
-		pixq_and=0 pi_min=274 pi_max=548 \
+		pi_min=274 pi_max=548 \
 		time_min=$(NXB_TIME_MIN) \
 		time_max=$(NXB_TIME_MAX) \
-		clobber=yes detmask=none
+		$(NXB_EXTRA_PARAM) clobber=yes detmask=none
 
 %.pinud : $(PJNAME).evt.gz $(HXDHKFILE) $(ORBFILE)
 	-rm -f $@
@@ -172,10 +200,10 @@ else
 		$(ATTFILE) \
 		sortkey=$(NXB_SORTKEY) \
 		sortstep=$(NXB_COR_STEP) \
-		pixq_and=0 pi_min=274 pi_max=548 \
+		pi_min=274 pi_max=548 \
 		time_min=$(NXB_TIME_MIN) \
 		time_max=$(NXB_TIME_MAX) \
-		clobber=yes detmask=none
+		$(NXB_EXTRA_PARAM) clobber=yes detmask=none
 
 endif
 
@@ -199,6 +227,16 @@ prsp : $(PJNAME).prsp.gz
 	$(MARFRMF) $*.rmf $*.parf $@
 
 # ARF
+
+# Construct Extra Parameters
+ifeq ($(INSTRM),xi1)
+
+# Remove Second Trailing Rows?
+ifeq ($(REMOVE_STR),YES)
+ARF_EXTRA_PARAM := $(ARF_EXTRA_PARAM) pixq_and=327680
+endif
+
+endif
 
 # ARF Generation in Parallel
 ifeq ($(NPROCS),1)
@@ -232,7 +270,7 @@ ifeq ($(NPROCS),1)
 		gtifile=$(PJNAME).evt.gz \
 		attitude=$(ATTFILE) \
 		rmffile=$< \
-		estepfile=medium
+		estepfile=medium $(ARF_EXTRA_PARAM)
 
 else
 
@@ -274,7 +312,7 @@ ARFLIST	:= .arflist.$(PID)
 			attitude=$(ATTFILE) \
 			rmffile=$< \
 			estepfile=medium \
-			rand_seed=$$i >>  $(ARFCMD); \
+			rand_seed=$$i $(ARF_EXTRA_PARAM) >>  $(ARFCMD); \
 		echo $@$$i `echo 'scale=2; 1/$(NPROCS)' | bc` >> $(ARFLIST); \
 	done
 	cat $(ARFCMD) | xargs -L1 -t -P$(NPROCS) $(ARFGEN)
@@ -319,7 +357,7 @@ ifeq ($(NPROCS),1)
 		gtifile=$(PJNAME).evt.gz \
 		attitude=$(ATTFILE) \
 		rmffile=$< \
-		estepfile=medium
+		estepfile=medium $(ARF_EXTRA_PARAM)
 
 else
 
@@ -361,7 +399,7 @@ PARFLIST:= .parflist.$(PID)
 			attitude=$(ATTFILE) \
 			rmffile=$< \
 			estepfile=medium \
-			rand_seed=$$i >>  $(PARFCMD); \
+			rand_seed=$$i $(ARF_EXTRA_PARAM) >>  $(PARFCMD); \
 		echo $@$$i `echo 'scale=2; 1/$(NPROCS)' | bc` >> $(PARFLIST); \
 	done
 	cat $(PARFCMD) | xargs -L1 -t -P$(NPROCS) $(ARFGEN)
@@ -409,20 +447,30 @@ image : $(PJNAME).img
 # Event
 .PHONY : event
 
+# Construct Extra Parameters
+ifeq ($(INSTRM),xi1)
+
+# Remove Second Trailing Rows?
+ifeq ($(REMOVE_STR),YES)
+EVT_EXTRA_PARAM := -s
+endif
+
+endif
+
 event : $(PJNAME).evt.gz
 
 ifneq ($(SRC5x5),)
 
 $(PJNAME).evt : $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis
 	-rm -f $@
-	$(XSELW) -e event "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
+	$(XSELW) -e event $(EVT_EXTRA_PARAM) "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
 
 else
 
 $(PJNAME).evt : $(PJNAME)_3x3.csis
 	@echo Warning: Only 3x3 is found.
 	-rm -f $@
-	$(XSELW) -e event "$(PJNAME)_3x3.csis" $@
+	$(XSELW) -e event $(EVT_EXTRA_PARAM) "$(PJNAME)_3x3.csis" $@
 
 endif
 
@@ -538,6 +586,11 @@ ARF_PCNT	= $(ARF_PCNT)
 NXB_TIME_MIN	= $(NXB_TIME_MIN)
 NXB_TIME_MAX	= $(NXB_TIME_MAX)
 NXB_SORTKEY		= $(NXB_SORTKEY)
+
+# XIS1 Charge Injection and Removing Second Trailing Rows
+XIS1_CI			= $(XIS1_CI)
+REMOVE_STR		= $(REMOVE_STR)
+
 
 endef
 export PARAMETERS

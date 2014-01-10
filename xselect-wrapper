@@ -10,10 +10,10 @@ REGION_FILE=""
 
 USAGE()
 {
-	echo "Usage: $CMDNAME -e EXTRACT_TARGET [ -r REGION_FILE] [ -g GTI_FILE ] [ -c \"MIN_PI MAX_PI\"] [ -b BIN_SIZE ] [ -h EHK_FILE ] [ -C COR2 ] EVENT_FILE OUTPUT_FILE" 1>&2
+	echo "Usage: $CMDNAME -e EXTRACT_TARGET [ -r REGION_FILE] [ -g GTI_FILE ] [ -c \"MIN_PI MAX_PI\"] [ -b BIN_SIZE ] [ -h EHK_FILE ] [ -C COR2 ] [ -s ] EVENT_FILE OUTPUT_FILE" 1>&2
 }
 
-while getopts e:r:c:b:h:g:C: OPT
+while getopts e:r:c:b:h:g:C:s OPT
 do
 	case "$OPT" in
 		e)
@@ -47,6 +47,9 @@ do
 		C)
 			COR2="TRUE"
 			CUTOFF_COR2="$OPTARG"
+			;;
+		s)
+			STRIP="TRUE"
 			;;
 		*)
 			USAGE
@@ -115,11 +118,19 @@ EOF
 
 GTI_CMD()
 {
-
 	if [ "$GTI" = "TRUE" ]; then
 		cat <<EOF >>$XSELCMD
 filter time file
 $GTI_FILE
+EOF
+	fi
+}
+
+STRIP_CMD()
+{
+	if [ "$STRIP" = "TRUE" ]; then
+		cat <<EOF >>$XSELCMD
+select event "(STATUS%(2**19))<2**18"
 EOF
 	fi
 }
@@ -158,6 +169,7 @@ no
 read events "$1"
 .
 EOF
+		STRIP_CMD
 		REGION_CMD
 		CUTOFF_CMD
 		COR_CMD
