@@ -144,7 +144,7 @@ NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) nxbevent=$(NXBSCI6FILE)
 	
 # Remove Second Trailing Rows?
 ifeq ($(REMOVE_STR),YES)
-NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=327680
+NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=262144
 else
 NXB_EXTRA_PARAM := $(NXB_EXTRA_PARAM) pixq_and=0
 endif
@@ -233,7 +233,7 @@ ifeq ($(INSTRM),xi1)
 
 # Remove Second Trailing Rows?
 ifeq ($(REMOVE_STR),YES)
-ARF_EXTRA_PARAM := $(ARF_EXTRA_PARAM) pixq_and=327680
+ARF_EXTRA_PARAM := $(ARF_EXTRA_PARAM) pixq_and=262144
 endif
 
 endif
