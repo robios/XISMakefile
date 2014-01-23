@@ -69,11 +69,6 @@ if [ $# -lt 2 ]; then
 	exit 1
 fi
 
-#if [ ! -r $1 ]; then
-#echo "Event file $1 does not exist." 1>&2
-#exit 1
-#fi
-
 if [ "$EXTRACT" != "TRUE" ]; then
 	USAGE
 	exit 1
@@ -83,6 +78,23 @@ if [ "$COR2" = "TRUE" -a "$HK" != "TRUE" ]; then
 	echo "Please specify EHK file (-h) when screening by COR2." 
 	exit 1
 fi
+
+# Event file(s)
+IFS=' ' read -a EVENTS <<< $1
+for e in ${EVENTS[@]}
+do
+	EVENT_DIRS+=(`dirname $e`)
+	EVENT_FILES+=(`basename $e`)
+	
+	if [ -n "$LAST_DIR" ]; then
+		if [ "$LAST_DIR" != `dirname $e` ]; then
+			echo "Different directories cannot be mixed."
+			exit 1
+		fi
+	fi
+
+	LAST_DIR=`dirname $e`
+done
 
 REGION_CMD()
 {
@@ -158,8 +170,8 @@ case "$EXTRACT_TARGET" in
 		cat <<EOF > $XSELCMD
 xsel
 no
-read events "$1"
-.
+read events "${EVENT_FILES[@]}"
+${EVENT_DIRS[0]}
 EOF
 		COORD_CMD
 		REGION_CMD
@@ -178,8 +190,8 @@ EOF
 		cat <<EOF > $XSELCMD
 xsel
 no
-read events "$1"
-.
+read events "${EVENT_FILES[@]}"
+${EVENT_DIRS[0]}
 EOF
 		STRIP_CMD
 		COORD_CMD
@@ -202,8 +214,8 @@ EOF
 		cat <<EOF > $XSELCMD
 xsel
 no
-read events "$1"
-.
+read events "${EVENT_FILES[@]}"
+${EVENT_DIRS[0]}
 EOF
 		COORD_CMD
 		REGION_CMD
@@ -229,8 +241,8 @@ EOF
 		cat <<EOF > $XSELCMD
 xsel
 no
-read events "$1"
-.
+read events "${EVENT_FILES[@]}"
+${EVENT_DIRS[0]}
 EOF
 		COORD_CMD
 		REGION_CMD

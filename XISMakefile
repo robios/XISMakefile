@@ -2,7 +2,7 @@
 # XISMakefile
 #
 
-VER		= 20140114
+VER		= 20140124
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
@@ -15,6 +15,7 @@ VER		= 20140114
 # 20120910 - 5x5が無い場合には無視
 # 20131228 - XIS1のCI=6keVに対応
 # 20140114 - Detector座標に対応
+# 20140124 - cleansis廃止
 
 # Programs
 XSEL	= xselect
@@ -91,11 +92,11 @@ NXBSCI6FILE	:= $(shell ls -1 $(CALDB)/data/suzaku/xis/bcf/ae_xi1_nxbsci6_*.fits*
 # Initialization
 
 .SUFFIXES:
-.SUFFIXES: .evt .csis .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .qdp .txt .gz
+.SUFFIXES: .evt .reg .gti .pha .lc .img .fits .rmf .arf .parf .rsp .prsp .nxb .pinud .ps .eps .pdf .qdp .txt .gz
 
 .PRECIOUS: %.evt.gz %.pha.gz %.rsp.gz %.prsp.gz %.nxb.gz
 
-.INTERMEDIATE: $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis $(PJNAME).evt %.pha %.rmf %.arf %.parf %.rsp %.prsp %.nxb
+.INTERMEDIATE: $(PJNAME).evt %.pha %.rmf %.arf %.parf %.rsp %.prsp %.nxb
 
 # Instrument Full Name
 INSTRMF	:= XIS$(subst xi,,$(INSTRM))
@@ -474,67 +475,18 @@ event : $(PJNAME).evt.gz
 
 ifneq ($(SRC5x5),)
 
-$(PJNAME).evt : $(PJNAME)_3x3.csis $(PJNAME)_5x5.csis
+$(PJNAME).evt : $(SRC3x3) $(SRC5x5)
 	-rm -f $@
-	$(XSELW) -e event $(EVT_EXTRA_PARAM) "$(PJNAME)_3x3.csis $(PJNAME)_5x5.csis" $@
+	$(XSELW) -e event $(EVT_EXTRA_PARAM) "$(SRC3x3) $(SRC5x5)" $@
 
 else
 
-$(PJNAME).evt : $(PJNAME)_3x3.csis
+$(PJNAME).evt : $(SRC3x3)
 	@echo Warning: Only 3x3 is found.
 	-rm -f $@
-	$(XSELW) -e event $(EVT_EXTRA_PARAM) "$(PJNAME)_3x3.csis" $@
+	$(XSELW) -e event $(EVT_EXTRA_PARAM) "$(SRC3x3)" $@
 
 endif
-
-# Clean SIS
-$(PJNAME)_3x3.csis : $(SRC3x3)
-	-rm -f $@
-	$(PLRN) $(CSIS)
-	$(CSIS) \
-		chipcol=SEGMENT \
-		datafile=$(SRC3x3) \
-		outfile=$@ \
-		cellsize=5 \
-		logprob=-5.3 \
-		bthresh=3 \
-		phamin=0 \
-		phamax=4095
-
-$(PJNAME)_5x5.csis : $(SRC5x5)
-	-rm -f $@
-	$(PLRN) $(CSIS)
-	$(CSIS) \
-		chipcol=SEGMENT \
-		datafile=$(SRC5x5) \
-		outfile=$@ \
-		cellsize=5 \
-		logprob=-5.3 \
-		bthresh=3 \
-		phamin=0 \
-		phamax=4095
-
-#.caldb.csis :
-#	-rm -f $@
-#	$(PLRN) $(CSIS)
-#	$(CSIS) \
-#		chipcol=SEGMENT \
-#		datafile=$< \
-#		outfile=$@ \
-#		cellsize=5 \
-#		logprob=-5.3 \
-#		bthresh=3 \
-#		phamin=0 \
-#		phamax=4095
-
-## CALDB
-#%3x3.caldb : $(SRC3x3) $(HKFILE)
-#	-rm -f $@
-#	$(PI) infile=$(SRC3x3) outfile=$@ hkfile=$(HKFILE)
-#
-#%5x5.caldb : $(SRC5x5) $(HKFILE)
-#	-rm -f $@
-#	$(PI) infile=$(SRC5x5) outfile=$@ hkfile=$(HKFILE)
 
 # Gzip
 %.gz : %
@@ -565,7 +517,7 @@ QDP_COMMAND := $(shell mktemp -u XXXXXX)
 .PHONY : clean
 
 clean :
-	rm -f *.evt *.evt.gz *.caldb *.csis *.pha *.pha.gz *.rmf *.arf *.parf *.rsp *.rsp.gz *.prsp *.prsp.gz *.nxb *.nxb.gz *.img *.lc
+	rm -f *.evt *.evt.gz *.caldb *.pha *.pha.gz *.rmf *.arf *.parf *.rsp *.rsp.gz *.prsp *.prsp.gz *.nxb *.nxb.gz *.img *.lc
 
 # Parameter
 .PHONY : param
