@@ -2,7 +2,7 @@
 # XISMakefile
 #
 
-VER		= 20131228
+VER		= 20140114
 
 # History
 # 20100901 - GTIフィルタ対応 (Default/Specific両対応)
@@ -14,6 +14,7 @@ VER		= 20131228
 # 20120217 - COR Screeningに対応
 # 20120910 - 5x5が無い場合には無視
 # 20131228 - XIS1のCI=6keVに対応
+# 20140114 - Detector座標に対応
 
 # Programs
 XSEL	= xselect
@@ -39,6 +40,8 @@ PARAM	= _Parameters.txt
 PJNAME			:= $(shell basename $(shell pwd))
 # Instruments (default to XIS1)
 INSTRM			:= xi1
+# Coordinates (default to sky)
+COORD			:= sky
 # ARF Gen parallel count (default to 1)
 NPROCS			:= 1
 # ARF Gen num_photon Parameter (default to program default)
@@ -97,22 +100,32 @@ NXBSCI6FILE	:= $(shell ls -1 $(CALDB)/data/suzaku/xis/bcf/ae_xi1_nxbsci6_*.fits*
 # Instrument Full Name
 INSTRMF	:= XIS$(subst xi,,$(INSTRM))
 
+# Region Mode
+ifeq ($(COORD),det)
+REGMODE := DETREG
+else
+REGMODE := SKYREG
+endif
+
 # Construct XSELW Commands
 XSELCMD :=
+ifeq ($(COORD),det)
+XSELCMD := $(XSELCMD) -d
+endif
 ifneq ($(PHACUTOFF),)
-	XSELCMD := $(XSELCMD) -c "$(PHACUTOFF)"
+XSELCMD := $(XSELCMD) -c "$(PHACUTOFF)"
 endif
 ifneq ($(REGION),)
-	XSELCMD := $(XSELCMD) -r $(REGION)
+XSELCMD := $(XSELCMD) -r $(REGION)
 endif
 ifneq ($(IMGBIN),)
-	XSELCMD := $(XSELCMD) -b $(IMGBIN)
+XSELCMD := $(XSELCMD) -b $(IMGBIN)
 endif
 ifneq ($(GTI_FILE),)
-	XSELCMD := $(XSELCMD) -g $(GTI_FILE)
+XSELCMD := $(XSELCMD) -g $(GTI_FILE)
 endif
 ifneq ($(COR),)
-	XSELCMD := $(XSELCMD) -h $(EHKFILE) -C $(COR)
+XSELCMD := $(XSELCMD) -h $(EHKFILE) -C $(COR)
 endif
 
 #
@@ -165,7 +178,7 @@ ifeq ($(NXB_SORTKEY),PINUD)
 	$(NXBGEN) \
 		$@ \
 		$< \
-		SKYREG \
+		$(REGMODE) \
 		$*.reg \
 		$(ORBFILE) \
 		$(ATTFILE) \
@@ -194,7 +207,7 @@ else
 	$(NXBGEN) \
 		$@ \
 		$< \
-		SKYREG \
+		$(REGMODE) \
 		$*.reg \
 		$(ORBFILE) \
 		$(ATTFILE) \
@@ -259,7 +272,7 @@ ifeq ($(NPROCS),1)
 		source_rmin=0 \
 		source_rmax=20 \
 		num_region=1 \
-		region_mode=SKYREG \
+		region_mode=$(REGMODE) \
 		regfile1=$*.reg \
 		arffile1=$@ \
 		limit_mode=MIXED \
@@ -300,7 +313,7 @@ ARFLIST	:= .arflist.$(PID)
 			source_rmin=0 \
 			source_rmax=20 \
 			num_region=1 \
-			region_mode=SKYREG \
+			region_mode=$(REGMODE) \
 			regfile1=$*.reg \
 			arffile1=$@$$i \
 			limit_mode=MIXED \
@@ -346,7 +359,7 @@ ifeq ($(NPROCS),1)
 		source_x=`cat $*.reg | grep -i circle | sed -e 's/.*(\([^,]*\),.*/\1/'` \
 		source_y=`cat $*.reg | grep -i circle | sed -e 's/.*([^,]*,\([^,]*\),.*/\1/'` \
 		num_region=1 \
-		region_mode=SKYREG \
+		region_mode=$(REGMODE) \
 		regfile1=$*.reg \
 		arffile1=$@ \
 		limit_mode=MIXED \
@@ -387,7 +400,7 @@ PARFLIST:= .parflist.$(PID)
 			source_x=`cat $*.reg | grep -i circle | sed -e 's/.*(\([^,]*\),.*/\1/'` \
 			source_y=`cat $*.reg | grep -i circle | sed -e 's/.*([^,]*,\([^,]*\),.*/\1/'` \
 			num_region=1 \
-			region_mode=SKYREG \
+			region_mode=$(REGMODE) \
 			regfile1=$*.reg \
 			arffile1=$@$$i \
 			limit_mode=MIXED \
@@ -573,6 +586,9 @@ ROOT		= ***CHANGE*HERE***
 # Instrument Names (xi0/xi1/xi3)
 INSTRM		= $(INSTRM)
 
+# Coordinates (sky/det)
+COORD		= $(COORD)
+
 # Parallel Job Count for ARF Gen
 NPROCS		= $(NPROCS)
 
@@ -590,8 +606,6 @@ NXB_SORTKEY		= $(NXB_SORTKEY)
 # XIS1 Charge Injection and Removing Second Trailing Rows
 XIS1_CI			= $(XIS1_CI)
 REMOVE_STR		= $(REMOVE_STR)
-
-
 endef
 export PARAMETERS
 

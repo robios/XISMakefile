@@ -7,13 +7,14 @@ XSEL=xselect
 # Default Value
 CUTOFF_COR2=8
 REGION_FILE=""
+COORD="sky"
 
 USAGE()
 {
-	echo "Usage: $CMDNAME -e EXTRACT_TARGET [ -r REGION_FILE] [ -g GTI_FILE ] [ -c \"MIN_PI MAX_PI\"] [ -b BIN_SIZE ] [ -h EHK_FILE ] [ -C COR2 ] [ -s ] EVENT_FILE OUTPUT_FILE" 1>&2
+	echo "Usage: $CMDNAME -e EXTRACT_TARGET [ -r REGION_FILE] [ -g GTI_FILE ] [ -c \"MIN_PI MAX_PI\"] [ -b BIN_SIZE ] [ -h EHK_FILE ] [ -C COR2 ] [ -s ] [ -d ] EVENT_FILE OUTPUT_FILE" 1>&2
 }
 
-while getopts e:r:c:b:h:g:C:s OPT
+while getopts e:r:c:b:h:g:C:sd OPT
 do
 	case "$OPT" in
 		e)
@@ -50,6 +51,9 @@ do
 			;;
 		s)
 			STRIP="TRUE"
+			;;
+		d)
+			COORD="det"
 			;;
 		*)
 			USAGE
@@ -135,6 +139,13 @@ EOF
 	fi
 }
 
+COORD_CMD()
+{
+	cat <<EOF >>$XSELCMD
+set image $COORD
+EOF
+}
+
 # Output file check
 if [ -r $2 ]; then
 	echo "Output file $2 already exists." 1>&2
@@ -150,6 +161,7 @@ no
 read events "$1"
 .
 EOF
+		COORD_CMD
 		REGION_CMD
 		CUTOFF_CMD
 		COR_CMD
@@ -170,6 +182,7 @@ read events "$1"
 .
 EOF
 		STRIP_CMD
+		COORD_CMD
 		REGION_CMD
 		CUTOFF_CMD
 		COR_CMD
@@ -192,6 +205,7 @@ no
 read events "$1"
 .
 EOF
+		COORD_CMD
 		REGION_CMD
 		CUTOFF_CMD
 		COR_CMD
@@ -218,6 +232,7 @@ no
 read events "$1"
 .
 EOF
+		COORD_CMD
 		REGION_CMD
 		CUTOFF_CMD
 		COR_CMD
