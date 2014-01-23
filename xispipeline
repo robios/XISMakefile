@@ -1,0 +1,130 @@
+#!/bin/sh
+
+set -e
+
+USAGE()
+{
+	echo "Usage: $0 [options] input_directory output_directory" 1>&2
+	echo
+	echo "Options:"
+	echo "  -h  show this help"
+	exit 1
+}
+
+while getopts h OPT
+do
+	case "$OPT" in
+		*)
+			USAGE
+			exit 1
+			;;
+	esac
+done
+
+shift $(($OPTIND - 1))
+
+if [ $# -lt 2 ]; then
+	USAGE
+	exit 1
+fi
+
+# Check existence of input directory
+if [ ! -r $1 ]; then
+	echo "$1 does not exist."
+	exit 1
+fi
+
+# Check structure of input directory
+if [ ! -r $1/xis -o ! -r $1/auxil -o ! -r $1/xis/event_uf -o ! -r $1/xis/hk ]; then
+	echo "Is $1 really Suzaku data directory? Check its directory structure."
+	exit 1
+fi
+
+# Check output directory
+if [ -r $2 ]; then
+	echo "$2 already exists."
+	exit 1
+fi
+
+# Directories
+UF=$1/xis/event_uf
+HK=$1/xis/hk
+AUXIL=$1/auxil
+
+OBS_ID=`ls $AUXIL/ae*.att* | sed -e 's/.*ae\([0-9]\{9\}\).*/\1/g'`
+
+if [ -z $OBS_ID ]; then
+	echo "Can not determine observation id."
+	exit 1
+fi
+
+# Create output directory
+mkdir -p $2/auxil
+mkdir -p $2/xis/hk
+mkdir -p $2/xis/event_cl
+
+CL=$2/xis/event_cl
+HK_CL=$2/xis/hk
+AUXIL_CL=$2/auxil
+
+LOG=$2/xispipeline.log
+
+# Copy necessary files
+echo "[35mCopying auxil files...[0m"
+cp -p $AUXIL/* $AUXIL_CL/
+echo "[35mCopying XIS hk files...[0m"
+cp -p $HK/* $HK_CL/
+echo "[35mCopying XIS unfiltered files...[0m"
+cp -p $UF/* $CL/
+
+# Start calibration
+for xis in 0 1 3
+do
+	echo "[35mStarting pipeline for XIS$xis[0m" | tee -a $LOG | cat
+	for i in $CL/ae${OBS_ID}xi${xis}*.evt.gz
+	do
+		f=`basename $i`
+		echo "[32mUnzipping $f[0m" | tee -a $LOG | cat
+		gzip -d $i
+		i=${i%.gz}; f=${f%.gz}
+		echo "[32mPerforming xisucode for $f[0m" | tee -a $LOG | cat
+		cp $i ${i%.evt}_step1.evt
+		xisucode CALDB ${i%.evt}_step1.evt &>$LOG
+		echo "[32mPerforming xistime for $f[0m" | tee -a $LOG | cat
+		xistime infile=${i%.evt}_step1.evt outfile=${i%.evt}_step2.evt timfile=$AUXIL/ae${OBS_ID}.tim.gz &>$LOG
+		echo "[32mPerforming xiscoord for $f[0m" | tee -a $LOG | cat
+		xiscoord infile=${i%.evt}_step2.evt outfile=${i%.evt}_step3.evt attitude=$AUXIL/ae${OBS_ID}.att.gz pointing=KEY &>$LOG
+		echo "[32mPerforming xisputpixelquality for $f[0m" | tee -a $LOG | cat
+		xisputpixelquality infile=${i%.evt}_step3.evt outfile=${i%.evt}_step4.evt &>$LOG
+		echo "[32mPerforming xispi for $f[0m" | tee -a $LOG | cat
+		xispi infile=${i%.evt}_step4.evt outfile=${i%.evt}_step5.evt hkfile=$HK/ae${OBS_ID}xi${xis}_0.hk.gz makepifile=CALDB &>$LOG
+		echo "[32mPerforming xisgtigen for $f[0m" | tee -a $LOG | cat
+		xisgtigen infile=${i%.evt}_step5.evt outfile=${i%.evt}.gti &>$LOG
+		
+		# Xselect
+		echo "[32mData screening for $f[0m" | tee -a $LOG | cat
+        xselect &>$LOG <<EOF
+xsel
+read event `echo ${i%.evt}_step5.evt`
+./
+select events "(GRADE==0||GRADE==2||GRADE==3||GRADE==4||GRADE==6)&&(STATUS>=0&&STATUS<=524287)"
+filter time file "${i%.evt}.gti"
+sisclean 2 5 -5.24 3 0 4095
+set mkfdir $AUXIL
+select mkf "AOCU_HK_CNT3_NML_P==1 && ANG_DIST<1.5 && S0_DTRATE<3 && S1_DTRATE<3 && S2_DTRATE<3 && S3_DTRATE<3 && SAA_HXD==0 && T_SAA_HXD>436 && ELV>5 && DYE_ELV>20"
+extract events
+save events
+${i/_uf/_cl}
+yes
+exit
+no
+EOF
+		
+		# Clean up
+		echo "[32mClean up...[0m" | tee -a $LOG | cat
+		rm $i ${i%.evt}_step*.evt ${i%.evt}.gti
+		gzip -9 ${i/_uf/_cl}
+	done
+done
+
+rm xselect.log
