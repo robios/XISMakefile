@@ -7,13 +7,26 @@ USAGE()
 	echo "Usage: $0 [options] input_directory output_directory" 1>&2
 	echo
 	echo "Options:"
+	echo "  -e  custom event filter"
+	echo "      Default: (GRADE==0||GRADE==2||GRADE==3||GRADE==4||GRADE==6)&&(STATUS>=0&&STATUS<=524287)"
+	echo "  -m  custom mkf filter"
+	echo "      Default: AOCU_HK_CNT3_NML_P==1 && ANG_DIST<1.5 && S0_DTRATE<3 && S1_DTRATE<3 && S2_DTRATE<3 && S3_DTRATE<3 && SAA_HXD==0 && T_SAA_HXD>436 && ELV>5 && DYE_ELV>20"
 	echo "  -h  show this help"
 	exit 1
 }
 
-while getopts h OPT
+EVT_FILT="(GRADE==0||GRADE==2||GRADE==3||GRADE==4||GRADE==6)&&(STATUS>=0&&STATUS<=524287)"
+MKF_FILT="AOCU_HK_CNT3_NML_P==1 && ANG_DIST<1.5 && S0_DTRATE<3 && S1_DTRATE<3 && S2_DTRATE<3 && S3_DTRATE<3 && SAA_HXD==0 && T_SAA_HXD>436 && ELV>5 && DYE_ELV>20"
+
+while getopts e:m:h OPT
 do
 	case "$OPT" in
+		e)
+			EVT_FILT="$OPTARG"
+			;;
+		m)
+			MKF_FILT="$OPTARG"
+			;;
 		*)
 			USAGE
 			exit 1
@@ -107,11 +120,11 @@ do
 xsel
 read event `echo ${i%.evt}_step5.evt`
 ./
-select events "(GRADE==0||GRADE==2||GRADE==3||GRADE==4||GRADE==6)&&(STATUS>=0&&STATUS<=524287)"
+select events "$EVT_FILT"
 filter time file "${i%.evt}.gti"
 sisclean 2 5 -5.24 3 0 4095
 set mkfdir $AUXIL
-select mkf "AOCU_HK_CNT3_NML_P==1 && ANG_DIST<1.5 && S0_DTRATE<3 && S1_DTRATE<3 && S2_DTRATE<3 && S3_DTRATE<3 && SAA_HXD==0 && T_SAA_HXD>436 && ELV>5 && DYE_ELV>20"
+select mkf "$MKF_FILT"
 extract events
 save events
 ${i/_uf/_cl}
@@ -127,4 +140,4 @@ EOF
 	done
 done
 
-rm xselect.log
+rm xselect.log xsel_timefile.asc
