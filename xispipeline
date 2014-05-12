@@ -91,6 +91,7 @@ echo "[35mCopying XIS unfiltered files...[0m"
 cp -p $UF/* $CL/
 
 # Start calibration
+{
 for xis in 0 1 3
 do
 	echo "[35mStarting pipeline for XIS$xis[0m" | tee -a $LOG | cat
@@ -102,21 +103,21 @@ do
 		i=${i%.gz}; f=${f%.gz}
 		echo "[32mPerforming xisucode for $f[0m" | tee -a $LOG | cat
 		cp $i ${i%.evt}_step1.evt
-		xisucode CALDB ${i%.evt}_step1.evt &>$LOG
+		xisucode CALDB ${i%.evt}_step1.evt >>$LOG
 		echo "[32mPerforming xistime for $f[0m" | tee -a $LOG | cat
-		xistime infile=${i%.evt}_step1.evt outfile=${i%.evt}_step2.evt timfile=$AUXIL/ae${OBS_ID}.tim.gz &>$LOG
+		xistime infile=${i%.evt}_step1.evt outfile=${i%.evt}_step2.evt timfile=$AUXIL/ae${OBS_ID}.tim.gz >>$LOG
 		echo "[32mPerforming xiscoord for $f[0m" | tee -a $LOG | cat
-		xiscoord infile=${i%.evt}_step2.evt outfile=${i%.evt}_step3.evt attitude=$AUXIL/ae${OBS_ID}.att.gz pointing=KEY &>$LOG
+		xiscoord infile=${i%.evt}_step2.evt outfile=${i%.evt}_step3.evt attitude=$AUXIL/ae${OBS_ID}.att.gz pointing=KEY >>$LOG
 		echo "[32mPerforming xisputpixelquality for $f[0m" | tee -a $LOG | cat
-		xisputpixelquality infile=${i%.evt}_step3.evt outfile=${i%.evt}_step4.evt &>$LOG
+		xisputpixelquality infile=${i%.evt}_step3.evt outfile=${i%.evt}_step4.evt >>$LOG
 		echo "[32mPerforming xispi for $f[0m" | tee -a $LOG | cat
-		xispi infile=${i%.evt}_step4.evt outfile=${i%.evt}_step5.evt hkfile=$HK/ae${OBS_ID}xi${xis}_0.hk.gz makepifile=CALDB &>$LOG
+		xispi infile=${i%.evt}_step4.evt outfile=${i%.evt}_step5.evt hkfile=$HK/ae${OBS_ID}xi${xis}_0.hk.gz makepifile=CALDB >>$LOG
 		echo "[32mPerforming xisgtigen for $f[0m" | tee -a $LOG | cat
-		xisgtigen infile=${i%.evt}_step5.evt outfile=${i%.evt}.gti &>$LOG
+		xisgtigen infile=${i%.evt}_step5.evt outfile=${i%.evt}.gti >>$LOG
 		
 		# Xselect
 		echo "[32mData screening for $f[0m" | tee -a $LOG | cat
-        xselect &>$LOG <<EOF
+        xselect >>$LOG <<EOF
 xsel
 read event `echo ${i%.evt}_step5.evt`
 ./
@@ -139,5 +140,6 @@ EOF
 		gzip -9 ${i/_uf/_cl}
 	done
 done
+} 3>&1 1>&2 2>&3 3>&- | tee -a $LOG
 
 rm xselect.log xsel_timefile.asc
